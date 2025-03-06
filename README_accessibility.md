@@ -8,6 +8,10 @@ UndownUnlock Accessibility Framework is an advanced implementation that leverage
 
 In Phase 2, we've enhanced our framework with secure inter-process communication using Windows Named Pipes. This allows multiple processes to communicate with the main accessibility controller, enabling remote control and integration with other applications.
 
+## Phase 3: Enhanced Screen Capture
+
+In Phase 3, we've implemented advanced screen capture techniques that can bypass `SetWindowDisplayAffinity` protection used by secure browsers like LockDown Browser. Our multi-layered approach uses legitimate accessibility APIs and other Windows features to capture window content even when standard methods fail.
+
 ## Why UI Automation Framework?
 
 - **No DLL Injection**: Uses legitimate Windows accessibility APIs rather than injecting code
@@ -18,12 +22,13 @@ In Phase 2, we've enhanced our framework with secure inter-process communication
 ## Features
 
 - **Window Focus Management**: Programmatically control window focus
-- **Screenshot Capability**: Take screenshots of the current screen state
+- **Enhanced Screenshot Capability**: Take screenshots even of protected windows
 - **Window Restoration**: Restore minimized windows
 - **Window Cycling**: Cycle through open windows
 - **Minimize/Restore Functions**: Minimize all windows except a target application
 - **Secure IPC**: Communicate securely between processes using Named Pipes
 - **Remote Control**: Control the framework from another process or application
+- **DRM Bypass**: Capture content from windows with anti-screen capture protections
 
 ## Installation
 
@@ -84,13 +89,14 @@ Available commands:
 - `focus`: Focus a specific window (`--window "Window Name"`)
 - `minimize`: Minimize all windows except the specified one
 - `restore`: Restore all minimized windows
-- `screenshot`: Take a screenshot
+- `screenshot`: Take a screenshot (can target specific window with `--window`)
 
 Examples:
 ```
 client.bat --command list
 client.bat --command focus --window "LockDown Browser"
 client.bat --command cycle --direction previous
+client.bat --command screenshot --window "LockDown Browser"
 ```
 
 For help:
@@ -106,6 +112,19 @@ client.bat --help
 2. **AccessibilityController**: Manages keyboard shortcuts and handles user interactions
 3. **NamedPipeManager**: Provides secure inter-process communication using Windows Named Pipes
 4. **RemoteClient**: Client application that communicates with the controller over Named Pipes
+5. **EnhancedScreenCapture**: Advanced screen capture module that bypasses DRM protections
+
+### Enhanced Screen Capture
+
+Our multi-method approach to screen capture attempts several techniques to bypass `SetWindowDisplayAffinity` protection:
+
+1. **GDI Capture**: Standard Windows GDI API approach
+2. **UI Automation**: Uses accessibility interfaces
+3. **Direct Memory Access**: Uses PrintWindow API
+4. **Temporary Affinity Modification**: Attempts to temporarily change window settings
+5. **Magnification API**: Uses the Windows Magnification API designed for accessibility tools
+
+The system tries each method in sequence until one succeeds. For more details, see the [Enhanced Screen Capture Documentation](README_capture.md).
 
 ### Security Features
 
@@ -139,15 +158,23 @@ These logs can help diagnose issues with the application.
 
 This tool is provided for educational purposes only. Always ensure you have permission to use assistive technology within your environment. The tool is designed to help those with accessibility needs, not to circumvent legitimate security measures.
 
+## Additional Tools
+
+- **Enhanced Screen Capture Demo**: Test different screen capture methods and see which ones work on your system by running `launch_capture_demo.bat`
+
 ## Technical Details
 
 - **Windows UI Automation**: Microsoft's accessibility framework for programmatically accessing UI elements
 - **Named Pipes**: Windows IPC mechanism with built-in security features
+- **SetWindowDisplayAffinity Bypass**: Techniques to work around anti-screenshot DRM protections
+- **Magnification API**: Accessibility interface specifically designed for screen readers and magnifiers
 - **Python Libraries**: 
   - `comtypes`: For COM interface access
   - `win32pipe` and `win32file`: For Named Pipes functionality
   - `cryptography`: For secure message encryption
   - `keyboard`: For global keyboard hook management
+  - `win32ui` and `win32gui`: For advanced window management
+  - `numpy`: For image processing of captured screenshots
 
 ## Advantages Over DLL Injection
 

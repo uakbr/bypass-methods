@@ -171,7 +171,13 @@ class WindowActivityMonitor:
     
     def _take_auto_screenshot(self, event_type: str):
         """Take an automatic screenshot when certain events occur."""
-        response = self.client.take_screenshot()
+        # For target app activation/deactivation, try to capture that specific window
+        target_window = None
+        if event_type in ["target_activated", "target_deactivated"]:
+            target_window = self.target_app
+        
+        # Take screenshot with window targeting if applicable
+        response = self.client.take_screenshot(target_window)
         
         if response.get("status") == "success":
             # Get the screenshot path from the response and copy it to our directory
@@ -180,7 +186,8 @@ class WindowActivityMonitor:
             
             if src_path and os.path.exists(src_path):
                 # Create our own copy with a descriptive name
-                filename = f"{timestamp}_{event_type}.png"
+                window_part = f"_{target_window}" if target_window else ""
+                filename = f"{timestamp}_{event_type}{window_part}.png"
                 dest_path = os.path.join(self.screenshot_dir, filename)
                 
                 try:

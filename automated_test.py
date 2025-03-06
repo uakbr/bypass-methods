@@ -173,10 +173,11 @@ class NamedPipeTest(unittest.TestCase):
         self.assertEqual(restore_response.get("status"), "success", "Restore windows should succeed")
     
     def test_take_screenshot(self):
-        """Test taking a screenshot."""
+        """Test taking a screenshot with multiple methods."""
+        # Test 1: Standard full screen screenshot
         screenshot_response = self.client.take_screenshot()
         
-        self.assertEqual(screenshot_response.get("status"), "success", "Taking screenshot should succeed")
+        self.assertEqual(screenshot_response.get("status"), "success", "Taking full screenshot should succeed")
         self.assertIn("screenshot_path", screenshot_response, "Response should contain screenshot_path")
         
         # Verify the screenshot file exists
@@ -185,6 +186,28 @@ class NamedPipeTest(unittest.TestCase):
         
         # Check file size is non-zero
         self.assertGreater(os.path.getsize(screenshot_path), 0, "Screenshot should have non-zero size")
+        
+        # Test 2: Window-specific screenshot
+        # First get a list of windows
+        window_list_response = self.client.get_window_list()
+        
+        if window_list_response.get("status") == "success" and window_list_response.get("windows"):
+            # Take a screenshot of the first window in the list
+            target_window = window_list_response.get("windows")[0]
+            window_screenshot_response = self.client.take_screenshot(target_window)
+            
+            self.assertEqual(window_screenshot_response.get("status"), "success", 
+                           f"Taking screenshot of specific window '{target_window}' should succeed")
+            self.assertIn("screenshot_path", window_screenshot_response, "Response should contain screenshot_path")
+            
+            # Verify the screenshot file exists
+            window_screenshot_path = window_screenshot_response.get("screenshot_path")
+            self.assertTrue(os.path.exists(window_screenshot_path), 
+                          f"Window-specific screenshot file should exist: {window_screenshot_path}")
+            
+            # Check file size is non-zero
+            self.assertGreater(os.path.getsize(window_screenshot_path), 0, 
+                             "Window-specific screenshot should have non-zero size")
 
 
 class SecurityManagerTest(unittest.TestCase):

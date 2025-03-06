@@ -30,6 +30,7 @@ def install_requirements():
         f.write("pywin32==306\n")
         f.write("cryptography==41.0.3\n")  # Added for Named Pipes security
         f.write("matplotlib==3.5.3\n")      # Added for dashboard visualization
+        f.write("numpy==1.22.4\n")          # Added for screen capture processing
     
     # Install packages
     try:
@@ -75,6 +76,7 @@ def setup_virtual_environment():
             f.write("pywin32==306\n")
             f.write("cryptography==41.0.3\n")  # Added for Named Pipes security
             f.write("matplotlib==3.5.3\n")      # Added for dashboard visualization
+            f.write("numpy==1.22.4\n")          # Added for screen capture processing
         
         subprocess.run([pip_path, "install", "-r", "requirements_accessibility.txt"], check=True)
         return True
@@ -133,6 +135,22 @@ def create_launchers():
         f.write("python dashboard_example.py\n")
         f.write("pause\n")
     
+    # Create launcher for enhanced capture demo
+    with open("launch_capture_demo.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Starting Enhanced Screen Capture Demo...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python enhanced_capture.py\n")
+        f.write("pause\n")
+    
+    # Create launcher for enhanced capture test
+    with open("test_capture.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Starting Enhanced Screen Capture Test...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python test_enhanced_capture.py %*\n")
+        f.write("pause\n")
+    
     print("Created launcher scripts:")
     print("  - launch_controller.bat - Starts the accessibility controller")
     print("  - launch_client.bat - Starts the remote client in interactive mode")
@@ -140,6 +158,8 @@ def create_launchers():
     print("  - launch_integration.bat - Runs the integration example")
     print("  - run_tests.bat - Runs the automated tests")
     print("  - launch_dashboard.bat - Runs the monitoring dashboard")
+    print("  - launch_capture_demo.bat - Runs the screen capture demo")
+    print("  - test_capture.bat - Runs the enhanced screen capture test")
     
     return True
 
@@ -200,6 +220,8 @@ def main():
     print("  - Integration example: launch_integration.bat")
     print("  - Monitoring dashboard: launch_dashboard.bat")
     print("  - Automated tests: run_tests.bat")
+    print("  - Screen capture demo: launch_capture_demo.bat")
+    print("  - Enhanced screen capture test: test_capture.bat")
     
     print("\nDocumentation:")
     print("  - For detailed information, see README_accessibility.md")

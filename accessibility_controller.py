@@ -14,6 +14,9 @@ from accessibility_manager import AccessibilityManager
 # Import the named pipe manager for secure communication
 from named_pipe_manager import NamedPipeServer
 
+# Import enhanced screen capture to work around SetWindowDisplayAffinity
+from enhanced_capture import EnhancedScreenCapture, get_window_handle_by_name
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -30,6 +33,7 @@ class AccessibilityController:
     Controller for the Accessibility-based window management system.
     Provides keyboard shortcuts for managing window focus and captures.
     Includes a Named Pipe Server for secure inter-process communication.
+    Uses enhanced screen capture to bypass SetWindowDisplayAffinity protection.
     """
     
     def __init__(self):
@@ -41,6 +45,9 @@ class AccessibilityController:
         self.target_app_name = "LockDown Browser"
         self.alt_windows = []
         self.screenshot_dir = "screenshots"
+        
+        # Initialize enhanced screen capture
+        self.screen_capture = EnhancedScreenCapture(self.screenshot_dir)
         
         # Ensure screenshot directory exists
         if not os.path.exists(self.screenshot_dir):
@@ -239,20 +246,30 @@ class AccessibilityController:
         try:
             logger.info(f"Received take_screenshot request from client {client_id}")
             
-            # Generate a filename with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = os.path.join(self.screenshot_dir, f"screenshot_{timestamp}.png")
+            # Get the target window if specified
+            target_window = message_data.get("window_name", None)
+            hwnd = None
             
-            # Take the screenshot
-            screenshot = ImageGrab.grab()
-            screenshot.save(filename)
+            if target_window:
+                hwnd = get_window_handle_by_name(target_window)
+                logger.info(f"Taking screenshot of window: {target_window}, handle: {hwnd}")
+            
+            # Take the screenshot using enhanced capture
+            filename = self.screen_capture.capture_screenshot(hwnd)
+            
+            if not filename:
+                logger.error("Failed to capture screenshot with any method")
+                return {
+                    "status": "error",
+                    "message": "Failed to capture screenshot with any method"
+                }
             
             logger.info(f"Screenshot saved to {filename}")
             
             return {
                 "status": "success",
                 "message": f"Screenshot saved to {filename}",
-                "filename": filename
+                "screenshot_path": filename
             }
         except Exception as e:
             logger.error(f"Error handling take_screenshot: {e}")
@@ -385,13 +402,20 @@ class AccessibilityController:
         try:
             logger.info("Taking screenshot")
             
-            # Generate a filename with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = os.path.join(self.screenshot_dir, f"screenshot_{timestamp}.png")
+            # Try to get the handle of the foreground window
+            import win32gui
+            foreground_hwnd = win32gui.GetForegroundWindow()
             
-            # Take the screenshot
-            screenshot = ImageGrab.grab()
-            screenshot.save(filename)
+            # Take the screenshot using enhanced capture
+            filename = self.screen_capture.capture_screenshot(foreground_hwnd)
+            
+            if not filename:
+                logger.error("Failed to capture screenshot with any method")
+                # Try a full screen capture as fallback
+                filename = self.screen_capture.capture_full_screen()
+                if not filename:
+                    logger.error("Full screen capture also failed")
+                    return
             
             logger.info(f"Screenshot saved to {filename}")
         except Exception as e:

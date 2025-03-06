@@ -117,16 +117,24 @@ class RemoteClient:
             "message": "Failed to send message"
         }
     
-    def take_screenshot(self) -> Dict[str, Any]:
+    def take_screenshot(self, window_name: Optional[str] = None) -> Dict[str, Any]:
         """
-        Take a screenshot of the current screen.
+        Take a screenshot of the current screen or a specific window.
+        
+        Args:
+            window_name: Optional name of a specific window to capture.
+                         If provided, will attempt to capture just that window.
         
         Returns:
             Response data from the server
         """
-        logger.info("Requesting screenshot")
+        logger.info(f"Requesting screenshot{f' of window: {window_name}' if window_name else ''}")
         
-        return self.pipe_client.send_message("take_screenshot", {}) or {
+        message_data = {}
+        if window_name:
+            message_data["window_name"] = window_name
+        
+        return self.pipe_client.send_message("take_screenshot", message_data) or {
             "status": "error",
             "message": "Failed to send message"
         }
@@ -215,8 +223,14 @@ def interactive_mode(client: RemoteClient):
             print_response(response)
         
         elif choice == "7":
-            response = client.take_screenshot()
+            window_choice = input("Enter window name to capture (leave blank for entire screen): ")
+            if window_choice.strip():
+                response = client.take_screenshot(window_choice)
+            else:
+                response = client.take_screenshot()
             print_response(response)
+            if response.get("status") == "success" and response.get("screenshot_path"):
+                print(f"Screenshot saved to: {response.get('screenshot_path')}")
         
         else:
             print("Invalid command. Please try again.")
@@ -278,7 +292,7 @@ def main():
                 response = client.restore_windows()
                 
             elif args.command == "screenshot":
-                response = client.take_screenshot()
+                response = client.take_screenshot(args.window)
             
             if response and args.command != "list":
                 print_response(response)
