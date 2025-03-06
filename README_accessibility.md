@@ -1,106 +1,159 @@
 # UndownUnlock Accessibility Framework
 
-This implementation of UndownUnlock uses the Windows UI Automation Framework to provide enhanced window management capabilities without requiring DLL injection or API hooking.
+## Introduction
+
+UndownUnlock Accessibility Framework is an advanced implementation that leverages the Windows UI Automation Framework to provide enhanced window management capabilities. This implementation uses legitimate accessibility APIs rather than DLL injection, making it more stable, less intrusive, and less likely to be detected as malicious software.
+
+## Phase 2: Named Pipes for Secure Inter-Process Communication
+
+In Phase 2, we've enhanced our framework with secure inter-process communication using Windows Named Pipes. This allows multiple processes to communicate with the main accessibility controller, enabling remote control and integration with other applications.
 
 ## Why UI Automation Framework?
 
-The Windows UI Automation Framework is a legitimate accessibility technology designed by Microsoft to help users with disabilities interact with applications. Using this framework offers several advantages:
-
-1. **No DLL Injection Required**: Instead of invasive DLL injection that could be detected, this implementation works with established accessibility APIs.
-2. **Legitimate Use Case**: The implementation leverages accessibility features that are designed for assistive technology.
-3. **Better Stealth**: Using supported Microsoft interfaces results in less detection surface compared to API hooking.
-4. **More Reliable**: Works across Windows versions without needing to adapt injection techniques.
+- **No DLL Injection**: Uses legitimate Windows accessibility APIs rather than injecting code
+- **Legitimate Use Case**: Designed as an accessibility tool for users with disabilities
+- **Better Stealth**: Less likely to be flagged by security software
+- **Reliability**: Works across different Windows versions with consistent behavior
 
 ## Features
 
-- **Window Focus Management**: Switch between application windows seamlessly
-- **Screenshot Capability**: Take screenshots of your screen
-- **Window Restoration**: Restore window focus when a target application attempts to grab focus
-- **Window Cycling**: Cycle through open windows using keyboard shortcuts
-- **Minimize/Restore**: Minimize all windows except the target window, and restore them later
+- **Window Focus Management**: Programmatically control window focus
+- **Screenshot Capability**: Take screenshots of the current screen state
+- **Window Restoration**: Restore minimized windows
+- **Window Cycling**: Cycle through open windows
+- **Minimize/Restore Functions**: Minimize all windows except a target application
+- **Secure IPC**: Communicate securely between processes using Named Pipes
+- **Remote Control**: Control the framework from another process or application
 
 ## Installation
 
 1. Ensure you have Python 3.6 or higher installed
 2. Run the setup script:
-
-```
-python setup.py
-```
-
-This will:
-- Set up a virtual environment
-- Install all required dependencies
-- Create a launcher script
+   ```
+   python setup.py
+   ```
+3. This will:
+   - Install all required dependencies
+   - Set up a virtual environment
+   - Create launch scripts for the controller and client
 
 ## Usage
 
-### Starting the Application
+### Running the Accessibility Controller
 
-On Windows, double-click the `launch.bat` file or run it from the command line.
+1. Start the controller by running:
+   ```
+   launch_controller.bat
+   ```
+2. The controller will start in the background and listen for keyboard shortcuts and Named Pipe connections.
 
-### Keyboard Shortcuts
+### Using Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Tab | Cycle to next window |
-| Ctrl+Shift+Tab | Cycle to previous window |
-| Ctrl+L | Focus LockDown Browser (if running) |
-| Ctrl+O | Focus another window |
-| Ctrl+Shift+S | Take a screenshot |
-| Ctrl+M | Minimize all windows except LockDown Browser |
-| Ctrl+R | Restore all previously minimized windows |
+When the controller is running, you can use these keyboard shortcuts:
 
-### Exiting the Application
+- `Alt+Shift+C`: Cycle to the next window
+- `Alt+Shift+X`: Cycle to the previous window
+- `Alt+Shift+L`: Focus the LockDown Browser window
+- `Alt+Shift+S`: Take a screenshot
+- `Alt+Shift+M`: Minimize all windows except LockDown Browser
+- `Alt+Shift+R`: Restore all minimized windows
 
-Press `Ctrl+C` in the terminal window to exit the application.
+### Using the Remote Client
+
+The remote client allows you to control the accessibility features from another process.
+
+#### Interactive Mode
+
+1. Start the remote client in interactive mode:
+   ```
+   launch_client.bat
+   ```
+2. Follow the on-screen menu to perform various actions.
+
+#### Command Line Mode
+
+You can also use the client in command-line mode for scripting:
+
+```
+client.bat --command [command] [options]
+```
+
+Available commands:
+- `list`: List all visible windows
+- `cycle`: Cycle to next or previous window (`--direction next|previous`)
+- `focus`: Focus a specific window (`--window "Window Name"`)
+- `minimize`: Minimize all windows except the specified one
+- `restore`: Restore all minimized windows
+- `screenshot`: Take a screenshot
+
+Examples:
+```
+client.bat --command list
+client.bat --command focus --window "LockDown Browser"
+client.bat --command cycle --direction previous
+```
+
+For help:
+```
+client.bat --help
+```
 
 ## How It Works
 
-The implementation consists of two main components:
+### Main Components
 
-1. **AccessibilityManager**: Interfaces with the Windows UI Automation Framework to control window focus and track window state changes.
+1. **AccessibilityManager**: Core component that interfaces with the Windows UI Automation Framework
+2. **AccessibilityController**: Manages keyboard shortcuts and handles user interactions
+3. **NamedPipeManager**: Provides secure inter-process communication using Windows Named Pipes
+4. **RemoteClient**: Client application that communicates with the controller over Named Pipes
 
-2. **AccessibilityController**: Provides keyboard shortcuts and handles user interactions.
+### Security Features
 
-The system monitors focus changes through event handlers and can detect when a target application attempts to steal focus. When detected, it can restore focus to your preferred window.
+- **Encrypted Communication**: All messages between client and server are encrypted
+- **Message Authentication**: Messages are signed to prevent tampering
+- **Access Control**: Only processes on the same computer can connect to the Named Pipe
 
 ## Customization
 
-You can customize the target application by modifying the `target_app_name` variable in the `AccessibilityController` class.
+You can customize the target application by modifying the `target_app_name` variable in the `accessibility_controller.py` file.
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Keyboard shortcuts not working**: Ensure no other application is capturing the same keyboard shortcuts.
-
-2. **Application not starting**: Verify that your Python version is 3.6 or higher and all dependencies are installed correctly.
-
-3. **Focus management issues**: Some applications with high privilege levels might still be able to force focus. In those cases, try using the keyboard shortcuts to restore focus manually.
+- **Controller won't start**: Ensure you have administrator privileges and the required dependencies are installed.
+- **Keyboard shortcuts not working**: Make sure no other application is capturing the same shortcuts.
+- **Client can't connect**: Verify the controller is running and check firewall settings.
 
 ### Logs
 
-The application generates log files that can help diagnose issues:
-- `accessibility_manager.log` - Logs from the accessibility framework
-- `accessibility_controller.log` - Logs from the controller
+Log files are created in the application directory:
+- `accessibility_manager.log`: Logs from the accessibility manager
+- `accessibility_controller.log`: Logs from the controller
+- `named_pipe_manager.log`: Logs from the Named Pipe communication
+- `remote_client.log`: Logs from the remote client
+
+These logs can help diagnose issues with the application.
 
 ## Legal and Ethical Considerations
 
-This tool is designed for educational purposes to demonstrate accessibility framework capabilities. Always ensure you have permission to use assistive technology in your environment.
+This tool is provided for educational purposes only. Always ensure you have permission to use assistive technology within your environment. The tool is designed to help those with accessibility needs, not to circumvent legitimate security measures.
 
 ## Technical Details
 
-This implementation uses:
-- Python's `comtypes` library to interface with COM objects
-- Windows UI Automation interfaces
-- Keyboard event monitoring for hotkeys
-- PIL for screenshots
+- **Windows UI Automation**: Microsoft's accessibility framework for programmatically accessing UI elements
+- **Named Pipes**: Windows IPC mechanism with built-in security features
+- **Python Libraries**: 
+  - `comtypes`: For COM interface access
+  - `win32pipe` and `win32file`: For Named Pipes functionality
+  - `cryptography`: For secure message encryption
+  - `keyboard`: For global keyboard hook management
 
 ## Advantages Over DLL Injection
 
-- No modifications to other processes' memory
-- No hooking of system APIs
-- Uses documented and supported accessibility interfaces
-- More compatible across different Windows versions
-- Less likely to be flagged by security software 
+- **No Memory Modifications**: Does not modify the memory of other processes
+- **No API Hooking**: Does not hook Windows APIs
+- **Legitimacy**: Uses documented accessibility features for their intended purpose
+- **Compatibility**: Works across different Windows versions without modification
+- **Maintainability**: Easier to understand and maintain
+- **Security**: Less likely to be detected as malware 

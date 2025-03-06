@@ -4,11 +4,15 @@ import time
 import logging
 import keyboard
 import threading
+import json
 from PIL import ImageGrab, Image
 from datetime import datetime
 
 # Import the accessibility manager
 from accessibility_manager import AccessibilityManager
+
+# Import the named pipe manager for secure communication
+from named_pipe_manager import NamedPipeServer
 
 # Set up logging
 logging.basicConfig(
@@ -25,11 +29,13 @@ class AccessibilityController:
     """
     Controller for the Accessibility-based window management system.
     Provides keyboard shortcuts for managing window focus and captures.
+    Includes a Named Pipe Server for secure inter-process communication.
     """
     
     def __init__(self):
-        """Initialize the controller with an accessibility manager."""
+        """Initialize the controller with accessibility manager and named pipe server."""
         self.accessibility_manager = AccessibilityManager()
+        self.pipe_server = NamedPipeServer("UndownUnlockAccessibilityPipe")
         self.running = False
         self.keyboard_thread = None
         self.target_app_name = "LockDown Browser"
@@ -41,7 +47,7 @@ class AccessibilityController:
             os.makedirs(self.screenshot_dir)
     
     def start(self):
-        """Start the controller and accessibility services."""
+        """Start the controller, accessibility services, and pipe server."""
         if self.running:
             return
             
@@ -53,6 +59,12 @@ class AccessibilityController:
         # Set up keyboard hooks
         self.setup_keyboard_hooks()
         
+        # Register pipe server message handlers
+        self.register_pipe_handlers()
+        
+        # Start the pipe server
+        self.pipe_server.start()
+        
         # Start keyboard listener in a thread
         self.running = True
         self.keyboard_thread = threading.Thread(target=self.keyboard_listener)
@@ -62,7 +74,7 @@ class AccessibilityController:
         logger.info("Accessibility controller started.")
     
     def stop(self):
-        """Stop the controller and accessibility services."""
+        """Stop the controller, accessibility services, and pipe server."""
         if not self.running:
             return
             
@@ -76,10 +88,205 @@ class AccessibilityController:
         # Remove all keyboard hooks
         self.remove_keyboard_hooks()
         
+        # Stop the pipe server
+        self.pipe_server.stop()
+        
         # Stop the accessibility manager
         self.accessibility_manager.stop()
         
         logger.info("Accessibility controller stopped.")
+    
+    def register_pipe_handlers(self):
+        """Register handlers for named pipe messages."""
+        
+        # Handler for window cycling messages
+        self.pipe_server.register_handler("cycle_window", self.handle_cycle_window)
+        
+        # Handler for focus window messages
+        self.pipe_server.register_handler("focus_window", self.handle_focus_window)
+        
+        # Handler for minimize window messages
+        self.pipe_server.register_handler("minimize_windows", self.handle_minimize_windows)
+        
+        # Handler for restore window messages
+        self.pipe_server.register_handler("restore_windows", self.handle_restore_windows)
+        
+        # Handler for screenshot messages
+        self.pipe_server.register_handler("take_screenshot", self.handle_take_screenshot)
+        
+        # Handler for get window list messages
+        self.pipe_server.register_handler("get_window_list", self.handle_get_window_list)
+        
+        logger.info("Pipe message handlers registered")
+    
+    def handle_cycle_window(self, message_data, client_id):
+        """Handle a window cycling request from a client."""
+        try:
+            direction = message_data.get("direction", "next")
+            logger.info(f"Received cycle_window request from client {client_id}: direction={direction}")
+            
+            window = self.accessibility_manager.cycle_windows(direction)
+            window_name = "Unknown"
+            
+            try:
+                window_name = window.CurrentName
+            except:
+                pass
+            
+            return {
+                "status": "success",
+                "window_name": window_name,
+                "message": f"Window cycled to {window_name}"
+            }
+        except Exception as e:
+            logger.error(f"Error handling cycle_window: {e}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+    
+    def handle_focus_window(self, message_data, client_id):
+        """Handle a window focus request from a client."""
+        try:
+            window_name = message_data.get("window_name", "")
+            partial_match = message_data.get("partial_match", True)
+            logger.info(f"Received focus_window request from client {client_id}: window_name={window_name}")
+            
+            if not window_name:
+                return {
+                    "status": "error",
+                    "message": "Window name is required"
+                }
+            
+            window = self.accessibility_manager.find_window_by_name(window_name, partial_match)
+            
+            if not window:
+                return {
+                    "status": "error",
+                    "message": f"Window '{window_name}' not found"
+                }
+            
+            success = self.accessibility_manager.set_window_focus(window)
+            
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"Focus set to window '{window_name}'"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Failed to set focus to window '{window_name}'"
+                }
+        except Exception as e:
+            logger.error(f"Error handling focus_window: {e}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+    
+    def handle_minimize_windows(self, message_data, client_id):
+        """Handle a minimize windows request from a client."""
+        try:
+            exception_window = message_data.get("exception_window", self.target_app_name)
+            logger.info(f"Received minimize_windows request from client {client_id}: exception_window={exception_window}")
+            
+            success = self.accessibility_manager.minimize_all_windows_except(exception_window)
+            
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"All windows minimized except '{exception_window}'"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": "Failed to minimize windows"
+                }
+        except Exception as e:
+            logger.error(f"Error handling minimize_windows: {e}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+    
+    def handle_restore_windows(self, message_data, client_id):
+        """Handle a restore windows request from a client."""
+        try:
+            logger.info(f"Received restore_windows request from client {client_id}")
+            
+            success = self.accessibility_manager.restore_all_windows()
+            
+            if success:
+                return {
+                    "status": "success",
+                    "message": "All windows restored"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": "Failed to restore windows"
+                }
+        except Exception as e:
+            logger.error(f"Error handling restore_windows: {e}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+    
+    def handle_take_screenshot(self, message_data, client_id):
+        """Handle a screenshot request from a client."""
+        try:
+            logger.info(f"Received take_screenshot request from client {client_id}")
+            
+            # Generate a filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            filename = os.path.join(self.screenshot_dir, f"screenshot_{timestamp}.png")
+            
+            # Take the screenshot
+            screenshot = ImageGrab.grab()
+            screenshot.save(filename)
+            
+            logger.info(f"Screenshot saved to {filename}")
+            
+            return {
+                "status": "success",
+                "message": f"Screenshot saved to {filename}",
+                "filename": filename
+            }
+        except Exception as e:
+            logger.error(f"Error handling take_screenshot: {e}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+    
+    def handle_get_window_list(self, message_data, client_id):
+        """Handle a get window list request from a client."""
+        try:
+            logger.info(f"Received get_window_list request from client {client_id}")
+            
+            windows = self.accessibility_manager.get_all_windows()
+            window_list = []
+            
+            for window in windows:
+                try:
+                    window_name = window.CurrentName
+                    window_list.append(window_name)
+                except:
+                    continue
+            
+            return {
+                "status": "success",
+                "windows": window_list,
+                "count": len(window_list)
+            }
+        except Exception as e:
+            logger.error(f"Error handling get_window_list: {e}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
     
     def setup_keyboard_hooks(self):
         """Set up keyboard hotkeys for controlling the application."""
@@ -222,6 +429,7 @@ if __name__ == "__main__":
         print("  Ctrl+Shift+S: Take screenshot")
         print("  Ctrl+M: Minimize all except LockDown Browser")
         print("  Ctrl+R: Restore all windows")
+        print("Named Pipe Server running for IPC with other components")
         print("Press Ctrl+C to exit")
         
         # Keep the main thread alive

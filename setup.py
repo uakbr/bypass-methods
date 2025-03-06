@@ -6,135 +6,151 @@ from pathlib import Path
 
 def print_header(text):
     """Print a formatted header."""
-    print("\n" + "=" * 60)
-    print(" " * 5 + text)
-    print("=" * 60 + "\n")
+    print("\n" + "=" * 80)
+    print(f" {text} ".center(80, "="))
+    print("=" * 80 + "\n")
 
 def check_python_version():
     """Check if Python version is 3.6 or higher."""
-    major, minor = sys.version_info[:2]
-    if major < 3 or (major == 3 and minor < 6):
-        print("Error: Python 3.6 or higher is required")
-        print(f"Current Python version: {major}.{minor}")
+    if sys.version_info.major < 3 or (sys.version_info.major == 3 and sys.version_info.minor < 6):
+        print("Error: Python 3.6 or higher is required.")
         return False
     return True
 
 def install_requirements():
     """Install required packages."""
-    print_header("Installing required packages")
+    print("Installing required packages...")
     
-    # Define the requirements
-    requirements = [
-        "keyboard==0.13.5",
-        "Pillow==10.2.0",
-        "psutil==5.9.6",
-        "comtypes==1.1.14",
-        "pywin32==306",
-    ]
+    # Create requirements file
+    with open("requirements_accessibility.txt", "w") as f:
+        f.write("keyboard==0.13.5\n")
+        f.write("Pillow==9.5.0\n")
+        f.write("psutil==5.9.5\n")
+        f.write("comtypes==1.2.0\n")
+        f.write("pywin32==306\n")
+        f.write("cryptography==41.0.3\n")  # Added for Named Pipes security
     
-    # Create requirements.txt file
-    with open("requirements_accessibility.txt", "w") as req_file:
-        req_file.write("\n".join(requirements))
-    
-    # Install requirements
+    # Install packages
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements_accessibility.txt"])
-        print("✓ Required packages installed successfully")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements_accessibility.txt"], check=True)
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"Error installing required packages: {e}")
+    except subprocess.CalledProcessError:
+        print("Error: Failed to install required packages.")
         return False
 
 def setup_virtual_environment():
     """Set up a virtual environment."""
-    print_header("Setting up virtual environment")
-    
     venv_dir = "venv"
+    
+    # Check if virtual environment already exists
     if os.path.exists(venv_dir):
-        print(f"Virtual environment '{venv_dir}' already exists")
-        return True
+        print(f"Virtual environment '{venv_dir}' already exists.")
+        activate_script = os.path.join(venv_dir, "Scripts", "activate")
+        if os.path.exists(activate_script):
+            print(f"You can activate it with: {activate_script}")
+            return True
+        else:
+            print(f"Warning: Virtual environment seems corrupted.")
+    
+    print(f"Creating virtual environment '{venv_dir}'...")
     
     try:
-        subprocess.check_call([sys.executable, "-m", "venv", venv_dir])
-        print(f"✓ Virtual environment created at '{venv_dir}'")
+        # Create virtual environment
+        subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
         
-        # Get the path to the virtual environment's Python executable
-        if sys.platform == "win32":
-            venv_python = os.path.join(venv_dir, "Scripts", "python.exe")
-        else:
-            venv_python = os.path.join(venv_dir, "bin", "python")
+        # Get path to pip in the virtual environment
+        if os.name == 'nt':  # Windows
+            pip_path = os.path.join(venv_dir, "Scripts", "pip.exe")
+        else:  # Unix/Linux
+            pip_path = os.path.join(venv_dir, "bin", "pip")
         
         # Install requirements in the virtual environment
-        subprocess.check_call([venv_python, "-m", "pip", "install", "--upgrade", "pip"])
-        subprocess.check_call([venv_python, "-m", "pip", "install", "-r", "requirements_accessibility.txt"])
+        print("Installing requirements in the virtual environment...")
+        with open("requirements_accessibility.txt", "w") as f:
+            f.write("keyboard==0.13.5\n")
+            f.write("Pillow==9.5.0\n")
+            f.write("psutil==5.9.5\n")
+            f.write("comtypes==1.2.0\n")
+            f.write("pywin32==306\n")
+            f.write("cryptography==41.0.3\n")  # Added for Named Pipes security
         
-        print(f"✓ Required packages installed in virtual environment")
+        subprocess.run([pip_path, "install", "-r", "requirements_accessibility.txt"], check=True)
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"Error setting up virtual environment: {e}")
+    
+    except subprocess.CalledProcessError:
+        print("Error: Failed to set up virtual environment.")
         return False
 
-def create_launcher():
-    """Create launcher script for the application."""
-    print_header("Creating launcher script")
+def create_launchers():
+    """Create batch files to start the application and the remote client."""
+    print("Creating launcher scripts...")
     
-    launcher_content = """@echo off
-echo Starting UndownUnlock Accessibility Controller...
-echo.
-
-:: Activate virtual environment
-call venv\\Scripts\\activate.bat
-
-:: Run the application
-python accessibility_controller.py
-
-:: Deactivate virtual environment when done
-call venv\\Scripts\\deactivate.bat
-"""
+    # Create main controller launcher
+    with open("launch_controller.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Starting UndownUnlock Accessibility Controller...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python accessibility_controller.py\n")
+        f.write("pause\n")
     
-    with open("launch.bat", "w") as launcher_file:
-        launcher_file.write(launcher_content)
+    # Create remote client launcher
+    with open("launch_client.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Starting UndownUnlock Remote Client...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python remote_client.py --interactive\n")
+        f.write("pause\n")
     
-    print("✓ Launcher script 'launch.bat' created")
+    # Create a command-line shortcut for the remote client
+    with open("client.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python remote_client.py %*\n")
+    
+    print("Created launcher scripts:")
+    print("  - launch_controller.bat - Starts the accessibility controller")
+    print("  - launch_client.bat - Starts the remote client in interactive mode")
+    print("  - client.bat - Command-line client for scripting (use with --help for options)")
+    
     return True
 
 def main():
     """Main setup function."""
-    print_header("UndownUnlock Accessibility Setup")
+    print_header("UndownUnlock Accessibility Framework Setup")
     
     # Check Python version
     if not check_python_version():
-        return False
+        sys.exit(1)
     
-    # Install required packages
-    if not install_requirements():
-        return False
+    # Setup steps
+    steps = [
+        (install_requirements, "Installing requirements"),
+        (setup_virtual_environment, "Setting up virtual environment"),
+        (create_launchers, "Creating launcher scripts")
+    ]
     
-    # Set up virtual environment
-    if not setup_virtual_environment():
-        return False
+    # Run setup steps
+    for step_func, step_name in steps:
+        print(f"\n>> {step_name}...")
+        if not step_func():
+            print(f"Error in step: {step_name}")
+            sys.exit(1)
     
-    # Create launcher script
-    if not create_launcher():
-        return False
-    
-    print_header("Setup Completed Successfully")
-    print("To start the application, run:")
-    print("  - On Windows: Double-click 'launch.bat' or run it from the command line")
-    print("\nThe following keyboard shortcuts are available when the application is running:")
-    print("  Ctrl+Tab: Cycle to next window")
-    print("  Ctrl+Shift+Tab: Cycle to previous window")
-    print("  Ctrl+L: Focus LockDown Browser")
-    print("  Ctrl+O: Focus other window")
-    print("  Ctrl+Shift+S: Take screenshot")
-    print("  Ctrl+M: Minimize all except LockDown Browser")
-    print("  Ctrl+R: Restore all windows")
-    print("\nPress Ctrl+C in the terminal to exit the application")
-    
-    return True
+    print_header("Setup Complete")
+    print("The UndownUnlock Accessibility Framework has been successfully set up!")
+    print("\nTo start the application, you can:")
+    print("  1. Run the main controller: launch_controller.bat")
+    print("  2. Run the remote client: launch_client.bat")
+    print("\nAvailable keyboard shortcuts when the controller is running:")
+    print("  - Alt+Shift+C: Cycle to the next window")
+    print("  - Alt+Shift+X: Cycle to the previous window")
+    print("  - Alt+Shift+L: Focus the LockDown Browser window")
+    print("  - Alt+Shift+S: Take a screenshot")
+    print("  - Alt+Shift+M: Minimize all windows except LockDown Browser")
+    print("  - Alt+Shift+R: Restore all minimized windows")
+    print("\nYou can also use the remote client to control the application from another process.")
+    print("  - Interactive mode: launch_client.bat")
+    print("  - Command-line mode: client.bat --help")
 
 if __name__ == "__main__":
-    success = main()
-    if not success:
-        print("\nSetup failed. Please check the errors above and try again.")
-        sys.exit(1) 
+    main() 

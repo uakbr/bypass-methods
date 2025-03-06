@@ -16,10 +16,7 @@ response/
 
 # Ignore dll
 *.dll
-# Ignore cookies
-*.txt
-!requirements.txt
-!requirements32.txt
+
 # Ignore exe
 *.exe
 
