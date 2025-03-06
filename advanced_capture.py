@@ -44,6 +44,13 @@ import pywintypes
 from comtypes import client, GUID
 import pythoncom
 
+# Import Windows Graphics Capture implementation
+try:
+    from windows_graphics_capture import WindowsGraphicsCapture, is_windows_10_1809_or_later
+    windows_graphics_capture_available = True
+except ImportError:
+    windows_graphics_capture_available = False
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -111,6 +118,15 @@ class AdvancedScreenCapture:
         
         # Initialize COM for thread
         self._init_com()
+        
+        # Initialize Windows Graphics Capture if available
+        self.windows_graphics_capture = None
+        if windows_graphics_capture_available and self.wgc_available:
+            try:
+                self.windows_graphics_capture = WindowsGraphicsCapture(screenshot_dir)
+                logger.info("Windows Graphics Capture initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Windows Graphics Capture: {e}")
         
         logger.info(f"Advanced Screen Capture initialized (Windows {self.windows_ver_info})")
         logger.info(f"Windows Graphics Capture API available: {self.wgc_available}")
@@ -195,10 +211,10 @@ class AdvancedScreenCapture:
             Path to the saved screenshot or None if failed
         """
         methods = [
+            self.capture_using_windows_graphics_capture,  # Try Windows Graphics Capture API first
             self.capture_using_dxgi_duplication,
-            self.capture_using_graphics_capture_api,
-            self.capture_using_display_driver,
             self.capture_using_direct3d,
+            self.capture_using_display_driver,
             self.capture_using_gdi_window_redir,
         ]
         
@@ -212,6 +228,43 @@ class AdvancedScreenCapture:
         
         logger.error("All advanced capture methods failed")
         return None
+    
+    def capture_using_windows_graphics_capture(self, hwnd: Optional[int] = None) -> Optional[str]:
+        """
+        Capture using Windows Graphics Capture API (Windows 10 1809+).
+        
+        Args:
+            hwnd: Optional window handle to capture. If None, captures the entire screen.
+            
+        Returns:
+            Path to the saved screenshot or None if failed
+        """
+        if not self.windows_graphics_capture or not self.wgc_available:
+            logger.warning("Windows Graphics Capture API not available, skipping")
+            return None
+        
+        try:
+            # If no window handle, capture foreground window
+            if hwnd is None:
+                hwnd = win32gui.GetForegroundWindow()
+            
+            # Get window name
+            window_name = win32gui.GetWindowText(hwnd)
+            logger.info(f"Capturing window '{window_name}' ({hwnd}) using Windows Graphics Capture API")
+            
+            # Capture using Windows Graphics Capture API
+            result = self.windows_graphics_capture.capture_window(window_name=window_name, hwnd=hwnd)
+            
+            if result:
+                logger.info(f"Windows Graphics Capture successful: {result}")
+                return result
+            else:
+                logger.warning("Windows Graphics Capture failed")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Windows Graphics Capture API failed: {e}")
+            return None
     
     def capture_using_dxgi_duplication(self, hwnd: Optional[int] = None) -> Optional[str]:
         """
@@ -292,69 +345,6 @@ class AdvancedScreenCapture:
             
         except Exception as e:
             logger.error(f"DXGI Desktop Duplication capture failed: {e}")
-            return None
-    
-    def capture_using_graphics_capture_api(self, hwnd: Optional[int] = None) -> Optional[str]:
-        """
-        Capture using Windows Graphics Capture API (Windows 10 1809+)
-        
-        Args:
-            hwnd: Optional window handle to capture. If None, captures entire screen.
-            
-        Returns:
-            Path to the saved screenshot or None if failed
-        """
-        if not self.wgc_available:
-            logger.warning("Windows Graphics Capture API not available, skipping")
-            return None
-        
-        try:
-            # This is a complex implementation that would require:
-            # 1. Creating a GraphicsCapture item (from window handle or display)
-            # 2. Creating a Direct3D device
-            # 3. Creating a capture frame pool
-            # 4. Starting the capture session
-            # 5. Getting a frame and converting it to an image
-            
-            # For this POC, we'll use a simplified approach by calling an external tool
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
-                temp_filename = temp_file.name
-                
-            # Use a command-line tool that implements Windows Graphics Capture
-            # Note: This would need to be implemented or provided separately
-            capture_tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wgc_capture.exe")
-            
-            if not os.path.exists(capture_tool):
-                logger.warning(f"Windows Graphics Capture tool not found at {capture_tool}")
-                return None
-                
-            # Call the tool to capture the screen
-            if hwnd:
-                # Capture specific window
-                cmd = [capture_tool, "--window", str(hwnd), "--output", temp_filename]
-            else:
-                # Capture entire screen
-                cmd = [capture_tool, "--output", temp_filename]
-            
-            subprocess.run(cmd, check=True, capture_output=True)
-            
-            # Check if the capture was successful
-            if os.path.exists(temp_filename) and os.path.getsize(temp_filename) > 0:
-                # Move to final location
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                final_filename = os.path.join(self.screenshot_dir, f"graphicscapture_{timestamp}.png")
-                os.rename(temp_filename, final_filename)
-                logger.info(f"Windows Graphics Capture saved to {final_filename}")
-                return final_filename
-            else:
-                logger.warning(f"Windows Graphics Capture failed or empty: {temp_filename}")
-                if os.path.exists(temp_filename):
-                    os.unlink(temp_filename)
-                    
-            return None
-            
-        except Exception as e:
-            logger.error(f"Windows Graphics Capture API failed: {e}")
             return None
     
     def capture_using_direct3d(self, hwnd: Optional[int] = None) -> Optional[str]:
@@ -703,11 +693,23 @@ class ScreenCaptureProxy:
         self.screenshot_dir = screenshot_dir
         
         # Import the enhanced capture module
-        from enhanced_capture import EnhancedScreenCapture
+        from enhanced_capture import EnhancedScreenCapture, get_window_handle_by_name
+        
+        # Store the get_window_handle_by_name function
+        self.get_window_handle_by_name = get_window_handle_by_name
         
         # Create instances of both capture systems
         self.enhanced_capture = EnhancedScreenCapture(screenshot_dir)
         self.advanced_capture = AdvancedScreenCapture(screenshot_dir)
+        
+        # Also create a direct instance of Windows Graphics Capture if available
+        self.windows_graphics_capture = None
+        if windows_graphics_capture_available and is_windows_10_1809_or_later():
+            try:
+                self.windows_graphics_capture = WindowsGraphicsCapture(screenshot_dir)
+                logger.info("Windows Graphics Capture initialized in proxy")
+            except Exception as e:
+                logger.error(f"Failed to initialize Windows Graphics Capture in proxy: {e}")
         
         logger.info("Screen Capture Proxy initialized with multiple capture systems")
     
@@ -725,13 +727,23 @@ class ScreenCaptureProxy:
         
         if window_name:
             # Get window handle from name
-            from enhanced_capture import get_window_handle_by_name
-            hwnd = get_window_handle_by_name(window_name)
+            hwnd = self.get_window_handle_by_name(window_name)
             if not hwnd:
                 logger.warning(f"Could not find window with name: {window_name}")
                 return None
         
-        # First try the advanced techniques
+        # First try direct Windows Graphics Capture if available
+        if self.windows_graphics_capture:
+            try:
+                logger.info("Attempting Windows Graphics Capture directly")
+                result = self.windows_graphics_capture.capture_window(window_name=window_name, hwnd=hwnd)
+                if result:
+                    logger.info(f"Direct Windows Graphics Capture successful: {result}")
+                    return result
+            except Exception as e:
+                logger.error(f"Direct Windows Graphics Capture failed: {e}")
+        
+        # Then try the advanced techniques
         result = self.advanced_capture.capture_screenshot(hwnd)
         if result:
             logger.info(f"Advanced capture successful: {result}")
@@ -826,7 +838,7 @@ def test_all_capture_methods(window_name: Optional[str] = None):
         print("\n--- Advanced Capture Methods ---")
         methods = [
             ("DXGI Desktop Duplication", advanced.capture_using_dxgi_duplication),
-            ("Windows Graphics Capture API", advanced.capture_using_graphics_capture_api),
+            ("Windows Graphics Capture API", advanced.capture_using_windows_graphics_capture),
             ("Direct3D", advanced.capture_using_direct3d),
             ("Display Driver", advanced.capture_using_display_driver),
             ("GDI Window Redirection", advanced.capture_using_gdi_window_redir)

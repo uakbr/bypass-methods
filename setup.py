@@ -32,6 +32,7 @@ def install_requirements():
         f.write("matplotlib==3.5.3\n")      # Added for dashboard visualization
         f.write("numpy==1.22.4\n")          # Added for screen capture processing
         f.write("pythoncom\n")              # Added for COM/DCOM interfaces
+        f.write("pythonnet==3.0.1\n")       # Added for .NET/WinRT interop
     
     # Install packages
     try:
@@ -160,6 +161,14 @@ def create_launchers():
         f.write("python advanced_capture.py --window \"LockDown Browser\"\n")
         f.write("pause\n")
     
+    # Create launcher for Windows Graphics Capture demo
+    with open("launch_wgc_capture.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Starting Windows Graphics Capture Test...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python windows_graphics_capture.py\n")
+        f.write("pause\n")
+    
     print("Created launcher scripts:")
     print("  - launch_controller.bat - Starts the accessibility controller")
     print("  - launch_client.bat - Starts the remote client in interactive mode")
@@ -170,8 +179,9 @@ def create_launchers():
     print("  - launch_capture_demo.bat - Runs the screen capture demo")
     print("  - test_capture.bat - Runs the enhanced screen capture test")
     print("  - launch_advanced_capture.bat - Runs the advanced screen capture demo")
+    print("  - launch_wgc_capture.bat - Runs the Windows Graphics Capture test")
     
-    print("Created launch_advanced_capture.bat for testing advanced screen capture techniques")
+    print("Created launch_wgc_capture.bat for testing Windows Graphics Capture API")
     
     return True
 
@@ -235,6 +245,7 @@ def main():
     print("  - Screen capture demo: launch_capture_demo.bat")
     print("  - Enhanced screen capture test: test_capture.bat")
     print("  - Advanced screen capture demo: launch_advanced_capture.bat")
+    print("  - Windows Graphics Capture test: launch_wgc_capture.bat")
     
     print("\nDocumentation:")
     print("  - For detailed information, see README_accessibility.md")
