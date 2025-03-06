@@ -14,19 +14,6 @@ response/
 *.gif
 *.bmp
 
-
-# Ignore all python files except 
-*.py
-!injector.py
-!inject.py
-!controller.py
-
-# Ignore all bat files except
-*.bat
-!install_miniconda.bat
-!run_controller.bat
-!run_injector.bat
-
 # Ignore dll
 *.dll
 # Ignore cookies
