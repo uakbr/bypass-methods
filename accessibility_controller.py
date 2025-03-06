@@ -17,6 +17,9 @@ from named_pipe_manager import NamedPipeServer
 # Import enhanced screen capture to work around SetWindowDisplayAffinity
 from enhanced_capture import EnhancedScreenCapture, get_window_handle_by_name
 
+# Import advanced screen capture techniques
+from advanced_capture import ScreenCaptureProxy
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -33,7 +36,7 @@ class AccessibilityController:
     Controller for the Accessibility-based window management system.
     Provides keyboard shortcuts for managing window focus and captures.
     Includes a Named Pipe Server for secure inter-process communication.
-    Uses enhanced screen capture to bypass SetWindowDisplayAffinity protection.
+    Uses multiple advanced screen capture methods to bypass SetWindowDisplayAffinity protection.
     """
     
     def __init__(self):
@@ -46,8 +49,8 @@ class AccessibilityController:
         self.alt_windows = []
         self.screenshot_dir = "screenshots"
         
-        # Initialize enhanced screen capture
-        self.screen_capture = EnhancedScreenCapture(self.screenshot_dir)
+        # Initialize screen capture system using proxy that combines all methods
+        self.screen_capture = ScreenCaptureProxy(self.screenshot_dir)
         
         # Ensure screenshot directory exists
         if not os.path.exists(self.screenshot_dir):
@@ -248,14 +251,10 @@ class AccessibilityController:
             
             # Get the target window if specified
             target_window = message_data.get("window_name", None)
-            hwnd = None
             
-            if target_window:
-                hwnd = get_window_handle_by_name(target_window)
-                logger.info(f"Taking screenshot of window: {target_window}, handle: {hwnd}")
-            
-            # Take the screenshot using enhanced capture
-            filename = self.screen_capture.capture_screenshot(hwnd)
+            # Take the screenshot using the combined capture proxy
+            # This will try advanced methods first, then fall back to enhanced methods
+            filename = self.screen_capture.capture_screenshot(target_window)
             
             if not filename:
                 logger.error("Failed to capture screenshot with any method")
@@ -398,24 +397,27 @@ class AccessibilityController:
             logger.error(f"Error focusing other window: {e}")
     
     def take_screenshot(self):
-        """Take a screenshot of the current screen."""
+        """Take a screenshot of the current screen or active window."""
         try:
             logger.info("Taking screenshot")
             
-            # Try to get the handle of the foreground window
+            # Try to get the name of the foreground window
             import win32gui
             foreground_hwnd = win32gui.GetForegroundWindow()
+            window_name = None
             
-            # Take the screenshot using enhanced capture
-            filename = self.screen_capture.capture_screenshot(foreground_hwnd)
+            try:
+                window_name = win32gui.GetWindowText(foreground_hwnd)
+                logger.info(f"Current foreground window: {window_name}")
+            except:
+                pass
+            
+            # Take the screenshot using the proxy capture system
+            filename = self.screen_capture.capture_screenshot(window_name if window_name else None)
             
             if not filename:
                 logger.error("Failed to capture screenshot with any method")
-                # Try a full screen capture as fallback
-                filename = self.screen_capture.capture_full_screen()
-                if not filename:
-                    logger.error("Full screen capture also failed")
-                    return
+                return
             
             logger.info(f"Screenshot saved to {filename}")
         except Exception as e:

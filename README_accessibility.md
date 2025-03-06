@@ -8,9 +8,15 @@ UndownUnlock Accessibility Framework is an advanced implementation that leverage
 
 In Phase 2, we've enhanced our framework with secure inter-process communication using Windows Named Pipes. This allows multiple processes to communicate with the main accessibility controller, enabling remote control and integration with other applications.
 
-## Phase 3: Enhanced Screen Capture
+## Phase 3: Enhanced and Advanced Screen Capture
 
-In Phase 3, we've implemented advanced screen capture techniques that can bypass `SetWindowDisplayAffinity` protection used by secure browsers like LockDown Browser. Our multi-layered approach uses legitimate accessibility APIs and other Windows features to capture window content even when standard methods fail.
+In Phase 3, we've implemented sophisticated screen capture techniques that can bypass `SetWindowDisplayAffinity` protection used by secure browsers like LockDown Browser. Our approach uses a multi-layered strategy:
+
+1. **Enhanced Capture Methods**: Accessibility-focused techniques including Magnification API and UI Automation.
+2. **Advanced Low-Level Techniques**: Windows graphics stack methods like DXGI Desktop Duplication and Direct3D capture that operate at the driver level.
+3. **Proxy System**: An intelligent system that tries all methods in sequence until one succeeds.
+
+This multi-layered approach uses legitimate Windows APIs while targeting different levels of the Windows graphics stack to reliably capture content even from heavily protected windows.
 
 ## Why UI Automation Framework?
 
@@ -124,7 +130,19 @@ Our multi-method approach to screen capture attempts several techniques to bypas
 4. **Temporary Affinity Modification**: Attempts to temporarily change window settings
 5. **Magnification API**: Uses the Windows Magnification API designed for accessibility tools
 
-The system tries each method in sequence until one succeeds. For more details, see the [Enhanced Screen Capture Documentation](README_capture.md).
+For more details, see the [Enhanced Screen Capture Documentation](README_capture.md).
+
+### Advanced Screen Capture
+
+For heavily protected applications, we've implemented advanced techniques that operate at deeper levels of the Windows graphics stack:
+
+1. **DXGI Desktop Duplication**: Low-level API used by Remote Desktop and professional screen capture software.
+2. **Windows Graphics Capture API**: Modern WinRT API designed for Windows 10's screen recording features.
+3. **Display Driver Level Capture**: Techniques to capture directly from the desktop compositing engine.
+4. **Direct3D Capture**: Methods that interface directly with the graphics pipeline.
+5. **GDI Window Redirection**: Novel approach that temporarily modifies window attributes during capture.
+
+For technical details on these advanced methods, see the [Advanced Screen Capture Documentation](README_advanced_capture.md).
 
 ### Security Features
 
@@ -160,13 +178,17 @@ This tool is provided for educational purposes only. Always ensure you have perm
 
 ## Additional Tools
 
-- **Enhanced Screen Capture Demo**: Test different screen capture methods and see which ones work on your system by running `launch_capture_demo.bat`
+- **Enhanced Screen Capture Demo**: Test the basic screen capture methods with `launch_capture_demo.bat`
+- **Advanced Screen Capture Demo**: Test cutting-edge capture techniques with `launch_advanced_capture.bat`
+- **Capture Testing Tool**: Comprehensive testing tool available with `test_capture.bat`
 
 ## Technical Details
 
 - **Windows UI Automation**: Microsoft's accessibility framework for programmatically accessing UI elements
 - **Named Pipes**: Windows IPC mechanism with built-in security features
-- **SetWindowDisplayAffinity Bypass**: Techniques to work around anti-screenshot DRM protections
+- **SetWindowDisplayAffinity Bypass**: Multi-layered techniques to work around anti-screenshot DRM protections
+- **DXGI Desktop Duplication**: Low-level DirectX Graphics Infrastructure API for screen capture
+- **Windows Graphics Capture API**: Modern WinRT API for screen recording in Windows 10+
 - **Magnification API**: Accessibility interface specifically designed for screen readers and magnifiers
 - **Python Libraries**: 
   - `comtypes`: For COM interface access
@@ -175,6 +197,7 @@ This tool is provided for educational purposes only. Always ensure you have perm
   - `keyboard`: For global keyboard hook management
   - `win32ui` and `win32gui`: For advanced window management
   - `numpy`: For image processing of captured screenshots
+  - `pythoncom`: For COM/DCOM interfaces used in advanced capture methods
 
 ## Advantages Over DLL Injection
 

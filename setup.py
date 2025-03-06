@@ -31,6 +31,7 @@ def install_requirements():
         f.write("cryptography==41.0.3\n")  # Added for Named Pipes security
         f.write("matplotlib==3.5.3\n")      # Added for dashboard visualization
         f.write("numpy==1.22.4\n")          # Added for screen capture processing
+        f.write("pythoncom\n")              # Added for COM/DCOM interfaces
     
     # Install packages
     try:
@@ -151,6 +152,14 @@ def create_launchers():
         f.write("python test_enhanced_capture.py %*\n")
         f.write("pause\n")
     
+    # Create launcher for advanced capture demo
+    with open("launch_advanced_capture.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Starting Advanced Screen Capture Demo...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python advanced_capture.py --window \"LockDown Browser\"\n")
+        f.write("pause\n")
+    
     print("Created launcher scripts:")
     print("  - launch_controller.bat - Starts the accessibility controller")
     print("  - launch_client.bat - Starts the remote client in interactive mode")
@@ -160,6 +169,9 @@ def create_launchers():
     print("  - launch_dashboard.bat - Runs the monitoring dashboard")
     print("  - launch_capture_demo.bat - Runs the screen capture demo")
     print("  - test_capture.bat - Runs the enhanced screen capture test")
+    print("  - launch_advanced_capture.bat - Runs the advanced screen capture demo")
+    
+    print("Created launch_advanced_capture.bat for testing advanced screen capture techniques")
     
     return True
 
@@ -222,6 +234,7 @@ def main():
     print("  - Automated tests: run_tests.bat")
     print("  - Screen capture demo: launch_capture_demo.bat")
     print("  - Enhanced screen capture test: test_capture.bat")
+    print("  - Advanced screen capture demo: launch_advanced_capture.bat")
     
     print("\nDocumentation:")
     print("  - For detailed information, see README_accessibility.md")
