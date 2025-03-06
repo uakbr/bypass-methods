@@ -29,6 +29,7 @@ def install_requirements():
         f.write("comtypes==1.2.0\n")
         f.write("pywin32==306\n")
         f.write("cryptography==41.0.3\n")  # Added for Named Pipes security
+        f.write("matplotlib==3.5.3\n")      # Added for dashboard visualization
     
     # Install packages
     try:
@@ -73,6 +74,7 @@ def setup_virtual_environment():
             f.write("comtypes==1.2.0\n")
             f.write("pywin32==306\n")
             f.write("cryptography==41.0.3\n")  # Added for Named Pipes security
+            f.write("matplotlib==3.5.3\n")      # Added for dashboard visualization
         
         subprocess.run([pip_path, "install", "-r", "requirements_accessibility.txt"], check=True)
         return True
@@ -107,10 +109,48 @@ def create_launchers():
         f.write("call venv\\Scripts\\activate.bat\n")
         f.write("python remote_client.py %*\n")
     
+    # Create integration example launcher
+    with open("launch_integration.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Starting UndownUnlock Integration Example...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python integration_example.py %*\n")
+        f.write("pause\n")
+    
+    # Create automated test launcher
+    with open("run_tests.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Running UndownUnlock Automated Tests...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python automated_test.py --start-controller --stop-controller %*\n")
+        f.write("pause\n")
+    
+    # Create dashboard launcher
+    with open("launch_dashboard.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Starting UndownUnlock Dashboard...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python dashboard_example.py\n")
+        f.write("pause\n")
+    
     print("Created launcher scripts:")
     print("  - launch_controller.bat - Starts the accessibility controller")
     print("  - launch_client.bat - Starts the remote client in interactive mode")
     print("  - client.bat - Command-line client for scripting (use with --help for options)")
+    print("  - launch_integration.bat - Runs the integration example")
+    print("  - run_tests.bat - Runs the automated tests")
+    print("  - launch_dashboard.bat - Runs the monitoring dashboard")
+    
+    return True
+
+def create_screenshot_directory():
+    """Create directories for screenshots."""
+    print("Creating screenshot directories...")
+    
+    dirs = ["screenshots", "auto_screenshots"]
+    for dir_name in dirs:
+        os.makedirs(dir_name, exist_ok=True)
+        print(f"  - Created directory: {dir_name}")
     
     return True
 
@@ -126,7 +166,8 @@ def main():
     steps = [
         (install_requirements, "Installing requirements"),
         (setup_virtual_environment, "Setting up virtual environment"),
-        (create_launchers, "Creating launcher scripts")
+        (create_launchers, "Creating launcher scripts"),
+        (create_screenshot_directory, "Creating screenshot directories")
     ]
     
     # Run setup steps
@@ -138,9 +179,11 @@ def main():
     
     print_header("Setup Complete")
     print("The UndownUnlock Accessibility Framework has been successfully set up!")
+    
     print("\nTo start the application, you can:")
     print("  1. Run the main controller: launch_controller.bat")
     print("  2. Run the remote client: launch_client.bat")
+    
     print("\nAvailable keyboard shortcuts when the controller is running:")
     print("  - Alt+Shift+C: Cycle to the next window")
     print("  - Alt+Shift+X: Cycle to the previous window")
@@ -148,9 +191,19 @@ def main():
     print("  - Alt+Shift+S: Take a screenshot")
     print("  - Alt+Shift+M: Minimize all windows except LockDown Browser")
     print("  - Alt+Shift+R: Restore all minimized windows")
-    print("\nYou can also use the remote client to control the application from another process.")
+    
+    print("\nYou can also use the remote client to control the application from another process:")
     print("  - Interactive mode: launch_client.bat")
     print("  - Command-line mode: client.bat --help")
+    
+    print("\nAdditional tools and examples:")
+    print("  - Integration example: launch_integration.bat")
+    print("  - Monitoring dashboard: launch_dashboard.bat")
+    print("  - Automated tests: run_tests.bat")
+    
+    print("\nDocumentation:")
+    print("  - For detailed information, see README_accessibility.md")
+    print("  - For a comparison with the DLL approach, see README_modern_approach.md")
 
 if __name__ == "__main__":
     main() 
