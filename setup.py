@@ -169,6 +169,14 @@ def create_launchers():
         f.write("python windows_graphics_capture.py\n")
         f.write("pause\n")
     
+    # Create launcher for DXGI Desktop Duplication test
+    with open("launch_dxgi_capture.bat", "w") as f:
+        f.write("@echo off\n")
+        f.write("echo Starting DXGI Desktop Duplication Test...\n")
+        f.write("call venv\\Scripts\\activate.bat\n")
+        f.write("python dxgi_desktop_duplication.py\n")
+        f.write("pause\n")
+    
     print("Created launcher scripts:")
     print("  - launch_controller.bat - Starts the accessibility controller")
     print("  - launch_client.bat - Starts the remote client in interactive mode")
@@ -180,8 +188,10 @@ def create_launchers():
     print("  - test_capture.bat - Runs the enhanced screen capture test")
     print("  - launch_advanced_capture.bat - Runs the advanced screen capture demo")
     print("  - launch_wgc_capture.bat - Runs the Windows Graphics Capture test")
+    print("  - launch_dxgi_capture.bat - Runs the DXGI Desktop Duplication test")
     
     print("Created launch_wgc_capture.bat for testing Windows Graphics Capture API")
+    print("Created launch_dxgi_capture.bat for testing DXGI Desktop Duplication")
     
     return True
 
@@ -246,6 +256,7 @@ def main():
     print("  - Enhanced screen capture test: test_capture.bat")
     print("  - Advanced screen capture demo: launch_advanced_capture.bat")
     print("  - Windows Graphics Capture test: launch_wgc_capture.bat")
+    print("  - DXGI Desktop Duplication test: launch_dxgi_capture.bat")
     
     print("\nDocumentation:")
     print("  - For detailed information, see README_accessibility.md")

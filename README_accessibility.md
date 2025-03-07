@@ -8,15 +8,19 @@ UndownUnlock Accessibility Framework is an advanced implementation that leverage
 
 In Phase 2, we've enhanced our framework with secure inter-process communication using Windows Named Pipes. This allows multiple processes to communicate with the main accessibility controller, enabling remote control and integration with other applications.
 
-## Phase 3: Enhanced and Advanced Screen Capture
+## Phase 3: Advanced Screen Capture Systems
 
-In Phase 3, we've implemented sophisticated screen capture techniques that can bypass `SetWindowDisplayAffinity` protection used by secure browsers like LockDown Browser. Our approach uses a multi-layered strategy:
+In Phase 3, we've implemented sophisticated screen capture techniques that can bypass `SetWindowDisplayAffinity` protection used by secure browsers like LockDown Browser. Our approach uses a multi-layered strategy with two powerful modern APIs:
 
-1. **Enhanced Capture Methods**: Accessibility-focused techniques including Magnification API and UI Automation.
-2. **Advanced Low-Level Techniques**: Windows graphics stack methods like DXGI Desktop Duplication and Direct3D capture that operate at the driver level.
-3. **Proxy System**: An intelligent system that tries all methods in sequence until one succeeds.
+1. **Windows Graphics Capture API**: Modern Windows 10+ screen capture technology that interfaces directly with the Desktop Window Manager.
+2. **DXGI Desktop Duplication API**: Low-level DirectX technology that works directly with the GPU to capture frame buffer content.
 
-This multi-layered approach uses legitimate Windows APIs while targeting different levels of the Windows graphics stack to reliably capture content even from heavily protected windows.
+These advanced methods are complemented by additional techniques:
+- Enhanced capture methods (Magnification API, Direct Memory, etc.)
+- Direct3D capture for GPU-rendered content
+- Display driver level capture mechanisms
+
+Our system intelligently selects the most appropriate method for each situation, with multiple fallbacks to ensure reliable operation across different hardware and Windows configurations.
 
 ## Why UI Automation Framework?
 
@@ -136,13 +140,17 @@ For more details, see the [Enhanced Screen Capture Documentation](README_capture
 
 For heavily protected applications, we've implemented advanced techniques that operate at deeper levels of the Windows graphics stack:
 
-1. **DXGI Desktop Duplication**: Low-level API used by Remote Desktop and professional screen capture software.
-2. **Windows Graphics Capture API**: Modern WinRT API designed for Windows 10's screen recording features.
-3. **Display Driver Level Capture**: Techniques to capture directly from the desktop compositing engine.
-4. **Direct3D Capture**: Methods that interface directly with the graphics pipeline.
-5. **GDI Window Redirection**: Novel approach that temporarily modifies window attributes during capture.
+1. **Windows Graphics Capture API**: Modern WinRT API designed for Windows 10's screen recording features. Operates with special system privileges to bypass security restrictions.
 
-For technical details on these advanced methods, see the [Advanced Screen Capture Documentation](README_advanced_capture.md).
+2. **DXGI Desktop Duplication**: Low-level API used by Remote Desktop that captures directly from the GPU frame buffer, bypassing application-level protections.
+
+3. **Direct3D Capture**: Methods that interface directly with the graphics pipeline to access rendered content.
+
+4. **GDI Window Redirection**: Novel approach that temporarily modifies window attributes during capture.
+
+For technical details on these advanced methods, see:
+- [Windows Graphics Capture Documentation](README_wgc.md)
+- [DXGI Desktop Duplication Documentation](README_dxgi.md)
 
 ### Security Features
 
@@ -180,6 +188,8 @@ This tool is provided for educational purposes only. Always ensure you have perm
 
 - **Enhanced Screen Capture Demo**: Test the basic screen capture methods with `launch_capture_demo.bat`
 - **Advanced Screen Capture Demo**: Test cutting-edge capture techniques with `launch_advanced_capture.bat`
+- **Windows Graphics Capture Test**: Test specifically the Windows 10+ Graphics Capture API with `launch_wgc_capture.bat`
+- **DXGI Desktop Duplication Test**: Test low-level GPU-based capture with `launch_dxgi_capture.bat`
 - **Capture Testing Tool**: Comprehensive testing tool available with `test_capture.bat`
 
 ## Technical Details
@@ -187,8 +197,8 @@ This tool is provided for educational purposes only. Always ensure you have perm
 - **Windows UI Automation**: Microsoft's accessibility framework for programmatically accessing UI elements
 - **Named Pipes**: Windows IPC mechanism with built-in security features
 - **SetWindowDisplayAffinity Bypass**: Multi-layered techniques to work around anti-screenshot DRM protections
-- **DXGI Desktop Duplication**: Low-level DirectX Graphics Infrastructure API for screen capture
 - **Windows Graphics Capture API**: Modern WinRT API for screen recording in Windows 10+
+- **DXGI Desktop Duplication**: Low-level DirectX API for direct GPU frame buffer access
 - **Magnification API**: Accessibility interface specifically designed for screen readers and magnifiers
 - **Python Libraries**: 
   - `comtypes`: For COM interface access

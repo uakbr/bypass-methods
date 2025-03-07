@@ -7,9 +7,9 @@ LockDown Browser. It complements the enhanced_capture.py module with
 more advanced methods that operate directly at the graphics driver level.
 
 Key techniques:
-- DXGI Desktop Duplication API
-- Direct3D capture
 - Windows Graphics Capture API (Windows 10+)
+- DXGI Desktop Duplication API 
+- Direct3D capture
 - Display Driver/Kernel-level screen access
 """
 
@@ -50,6 +50,13 @@ try:
     windows_graphics_capture_available = True
 except ImportError:
     windows_graphics_capture_available = False
+
+# Import DXGI Desktop Duplication implementation
+try:
+    from dxgi_desktop_duplication import DXGIOutputDuplicationCapture
+    dxgi_desktop_duplication_available = True
+except ImportError:
+    dxgi_desktop_duplication_available = False
 
 # Setup logging
 logging.basicConfig(
@@ -127,6 +134,20 @@ class AdvancedScreenCapture:
                 logger.info("Windows Graphics Capture initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize Windows Graphics Capture: {e}")
+        
+        # Initialize DXGI Desktop Duplication if available
+        self.dxgi_duplication = None
+        if dxgi_desktop_duplication_available:
+            try:
+                self.dxgi_duplication = DXGIOutputDuplicationCapture(screenshot_dir)
+                if self.dxgi_duplication.initialized:
+                    logger.info("DXGI Desktop Duplication initialized successfully")
+                else:
+                    logger.warning("DXGI Desktop Duplication initialization failed")
+                    self.dxgi_duplication = None
+            except Exception as e:
+                logger.error(f"Failed to initialize DXGI Desktop Duplication: {e}")
+                self.dxgi_duplication = None
         
         logger.info(f"Advanced Screen Capture initialized (Windows {self.windows_ver_info})")
         logger.info(f"Windows Graphics Capture API available: {self.wgc_available}")
@@ -212,7 +233,7 @@ class AdvancedScreenCapture:
         """
         methods = [
             self.capture_using_windows_graphics_capture,  # Try Windows Graphics Capture API first
-            self.capture_using_dxgi_duplication,
+            self.capture_using_dxgi_desktop_duplication,  # Then try DXGI Desktop Duplication
             self.capture_using_direct3d,
             self.capture_using_display_driver,
             self.capture_using_gdi_window_redir,
@@ -266,10 +287,9 @@ class AdvancedScreenCapture:
             logger.error(f"Windows Graphics Capture API failed: {e}")
             return None
     
-    def capture_using_dxgi_duplication(self, hwnd: Optional[int] = None) -> Optional[str]:
+    def capture_using_dxgi_desktop_duplication(self, hwnd: Optional[int] = None) -> Optional[str]:
         """
-        Capture using DXGI Desktop Duplication API, which is a low-level API
-        used by remote desktop and screen recording software.
+        Capture using DXGI Desktop Duplication API.
         
         Args:
             hwnd: Optional window handle to capture. If None, captures entire screen.
@@ -277,74 +297,29 @@ class AdvancedScreenCapture:
         Returns:
             Path to the saved screenshot or None if failed
         """
-        if not self.d3d_available:
-            logger.warning("D3D not available, skipping DXGI Duplication capture")
+        if not self.dxgi_duplication:
+            logger.warning("DXGI Desktop Duplication not available, skipping")
             return None
         
         try:
-            # This would be a complex implementation - here's the simplified approach
-            
-            # 1. Create D3D11 device
-            d3d_device = None
-            dxgi_device = None
-            device_context = None
-            
-            # 2. Get DXGI adapter
-            adapter = None
-            output = None
-            
-            # 3. Create desktop duplication
-            duplication = None
-            
-            # 4. Get next frame
-            # The actual implementation would involve:
-            # - Creating D3D11 device
-            # - Getting DXGI adapter
-            # - Finding the right output
-            # - Creating Desktop Duplication object
-            # - Acquiring the next frame
-            # - Mapping the texture data
-            # - Converting to an image
-            
-            # For this POC, let's try to execute an external tool that uses DXGI
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
-                temp_filename = temp_file.name
-            
-            # Use a command-line tool that implements DXGI Desktop Duplication
-            # Note: This would need to be implemented or provided separately
-            capture_tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dxgi_capture.exe")
-            
-            if not os.path.exists(capture_tool):
-                logger.warning(f"DXGI capture tool not found at {capture_tool}")
-                return None
-                
-            # Call the tool to capture the screen
             if hwnd:
                 # Capture specific window
-                cmd = [capture_tool, "--window", str(hwnd), "--output", temp_filename]
+                logger.info(f"Capturing window {hwnd} using DXGI Desktop Duplication")
+                result = self.dxgi_duplication.capture_window(hwnd)
             else:
                 # Capture entire screen
-                cmd = [capture_tool, "--output", temp_filename]
-            
-            subprocess.run(cmd, check=True, capture_output=True)
-            
-            # Check if the capture was successful
-            if os.path.exists(temp_filename) and os.path.getsize(temp_filename) > 0:
-                # Move to final location
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                final_filename = os.path.join(self.screenshot_dir, f"dxgi_{timestamp}.png")
-                os.rename(temp_filename, final_filename)
-                logger.info(f"DXGI capture saved to {final_filename}")
-                return final_filename
-            else:
-                logger.warning(f"DXGI capture failed or empty: {temp_filename}")
-                if os.path.exists(temp_filename):
-                    os.unlink(temp_filename)
+                logger.info("Capturing full screen using DXGI Desktop Duplication")
+                result = self.dxgi_duplication.capture_full_screen()
                 
-            return None
-            
+            if result:
+                logger.info(f"DXGI Desktop Duplication successful: {result}")
+                return result
+            else:
+                logger.warning("DXGI Desktop Duplication failed")
+                return None
+                
         except Exception as e:
-            logger.error(f"DXGI Desktop Duplication capture failed: {e}")
+            logger.error(f"DXGI Desktop Duplication failed: {e}")
             return None
     
     def capture_using_direct3d(self, hwnd: Optional[int] = None) -> Optional[str]:
@@ -702,7 +677,7 @@ class ScreenCaptureProxy:
         self.enhanced_capture = EnhancedScreenCapture(screenshot_dir)
         self.advanced_capture = AdvancedScreenCapture(screenshot_dir)
         
-        # Also create a direct instance of Windows Graphics Capture if available
+        # Also create direct instances of specific capture methods
         self.windows_graphics_capture = None
         if windows_graphics_capture_available and is_windows_10_1809_or_later():
             try:
@@ -710,6 +685,19 @@ class ScreenCaptureProxy:
                 logger.info("Windows Graphics Capture initialized in proxy")
             except Exception as e:
                 logger.error(f"Failed to initialize Windows Graphics Capture in proxy: {e}")
+        
+        self.dxgi_duplication = None
+        if dxgi_desktop_duplication_available:
+            try:
+                self.dxgi_duplication = DXGIOutputDuplicationCapture(screenshot_dir)
+                if self.dxgi_duplication.initialized:
+                    logger.info("DXGI Desktop Duplication initialized in proxy")
+                else:
+                    logger.warning("DXGI Desktop Duplication initialization failed in proxy")
+                    self.dxgi_duplication = None
+            except Exception as e:
+                logger.error(f"Failed to initialize DXGI Desktop Duplication in proxy: {e}")
+                self.dxgi_duplication = None
         
         logger.info("Screen Capture Proxy initialized with multiple capture systems")
     
@@ -742,6 +730,21 @@ class ScreenCaptureProxy:
                     return result
             except Exception as e:
                 logger.error(f"Direct Windows Graphics Capture failed: {e}")
+        
+        # Then try direct DXGI Desktop Duplication if available
+        if self.dxgi_duplication:
+            try:
+                logger.info("Attempting DXGI Desktop Duplication directly")
+                if hwnd:
+                    result = self.dxgi_duplication.capture_window(hwnd)
+                else:
+                    result = self.dxgi_duplication.capture_full_screen()
+                    
+                if result:
+                    logger.info(f"Direct DXGI Desktop Duplication successful: {result}")
+                    return result
+            except Exception as e:
+                logger.error(f"Direct DXGI Desktop Duplication failed: {e}")
         
         # Then try the advanced techniques
         result = self.advanced_capture.capture_screenshot(hwnd)
@@ -837,8 +840,8 @@ def test_all_capture_methods(window_name: Optional[str] = None):
     if advanced:
         print("\n--- Advanced Capture Methods ---")
         methods = [
-            ("DXGI Desktop Duplication", advanced.capture_using_dxgi_duplication),
             ("Windows Graphics Capture API", advanced.capture_using_windows_graphics_capture),
+            ("DXGI Desktop Duplication", advanced.capture_using_dxgi_desktop_duplication),
             ("Direct3D", advanced.capture_using_direct3d),
             ("Display Driver", advanced.capture_using_display_driver),
             ("GDI Window Redirection", advanced.capture_using_gdi_window_redir)
