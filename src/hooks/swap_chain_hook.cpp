@@ -1,4 +1,5 @@
 #include "../../include/dx_hook_core.h"
+#include "../../include/signatures/dx_signatures.h"
 #include <iostream>
 #include <Windows.h>
 
@@ -73,9 +74,18 @@ bool SwapChainHook::InstallHooks(void* interfacePtr) {
     // Store the vtable for unhooking later
     m_hookedVTable = vtable;
     
-    // Install the hook for Present (index 8 in IDXGISwapChain)
+    // Determine the correct Present method offset based on the interface version
+    int presentOffset = Signatures::SwapChain::GetPresentOffset(interfacePtr);
+    if (presentOffset < 0) {
+        std::cerr << "Failed to determine Present method offset" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Detected SwapChain version with Present at offset " << presentOffset << std::endl;
+    
+    // Install the hook for Present
     m_originalPresent = reinterpret_cast<Present_t>(
-        HookVTableEntry(vtable, 8, reinterpret_cast<void*>(&SwapChainHook::HookPresent))
+        HookVTableEntry(vtable, presentOffset, reinterpret_cast<void*>(&SwapChainHook::HookPresent))
     );
     
     if (!m_originalPresent) {
@@ -94,9 +104,12 @@ void SwapChainHook::RemoveHooks() {
         return;
     }
     
+    // Determine the correct Present method offset
+    int presentOffset = 8; // Default for IDXGISwapChain
+    
     // Restore the original Present function
     if (m_originalPresent) {
-        HookVTableEntry(m_hookedVTable, 8, reinterpret_cast<void*>(m_originalPresent));
+        HookVTableEntry(m_hookedVTable, presentOffset, reinterpret_cast<void*>(m_originalPresent));
     }
     
     m_originalPresent = nullptr;
