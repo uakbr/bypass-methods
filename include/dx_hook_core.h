@@ -19,6 +19,7 @@ class SwapChainHook;
 class MemoryScanner;
 class FrameExtractor;
 class SharedMemoryTransport;
+class FactoryHooks;
 
 /**
  * @brief Core class that manages DirectX hooking operations
@@ -54,6 +55,9 @@ public:
      * @param handle The handle returned from RegisterFrameCallback
      */
     void UnregisterFrameCallback(size_t handle);
+
+    // Make FactoryHooks a friend class so it can access private members
+    friend class FactoryHooks;
 
 private:
     // Private constructor for singleton

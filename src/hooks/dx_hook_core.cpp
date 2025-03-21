@@ -1,6 +1,7 @@
 #include "../../include/dx_hook_core.h"
 #include "../../include/frame_extractor.h"
 #include "../../include/shared_memory_transport.h"
+#include "../../include/com_hooks/factory_hooks.h"
 #include <iostream>
 
 namespace UndownUnlock {
@@ -94,6 +95,15 @@ bool DXHookCore::Initialize() {
             // This is not a fatal error - we'll hook when the app creates a SwapChain
         }
         
+        // Initialize the factory hooks for COM interface runtime detection
+        bool factoryHookResult = FactoryHooks::GetInstance().Initialize();
+        if (!factoryHookResult) {
+            std::cerr << "Warning: Failed to initialize factory hooks" << std::endl;
+            // Continue anyway, as we might still hook through other methods
+        } else {
+            std::cout << "COM Interface runtime detection initialized" << std::endl;
+        }
+        
         // Set flag indicating initialization succeeded
         instance.m_initialized = true;
         std::cout << "DirectX Hook Core initialized successfully" << std::endl;
@@ -114,6 +124,9 @@ void DXHookCore::Shutdown() {
     DXHookCore& instance = GetInstance();
     
     std::cout << "Shutting down DirectX Hook Core..." << std::endl;
+    
+    // Shut down factory hooks
+    FactoryHooks::GetInstance().Shutdown();
     
     // Clear any callbacks
     instance.m_frameCallbacks.clear();
