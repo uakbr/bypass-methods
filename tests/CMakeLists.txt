@@ -47,4 +47,25 @@ if(TARGET undownunlock_tests)
     set_tests_properties(undownunlock_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
     )
-endif() 
+endif()
+
+# Windows Integration Enhancement Tests (standalone)
+add_executable(windows_integration_test test_windows_integration.cpp)
+target_link_libraries(windows_integration_test PRIVATE
+    UndownUnlockDXHook
+    dbghelp
+)
+
+# Add additional system libraries needed for Windows Integration
+if(WIN32)
+    target_link_libraries(windows_integration_test PRIVATE
+        wbemuuid
+        oleacc
+        Shlwapi
+        Shell32
+        UIAutomationCore
+    )
+endif()
+
+# Register Windows Integration test with CTest
+add_test(NAME windows_integration_test COMMAND windows_integration_test) 
