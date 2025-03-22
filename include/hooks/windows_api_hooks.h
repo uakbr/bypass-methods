@@ -49,7 +49,6 @@ public:
      */
     static void UninstallKeyboardHook();
 
-private:
     // Original bytes storage for hook restoration
     static BYTE s_originalBytesForGetForeground[5];
     static BYTE s_originalBytesForShowWindow[5];
@@ -60,7 +59,7 @@ private:
     static BYTE s_originalBytesForTerminateProcess[5];
     static BYTE s_originalBytesForExitProcess[5];
 
-    // State tracking
+    // State tracking - public to allow access from the keyboard hook
     static bool s_isFocusInstalled;
     static HWND s_focusHWND;
     static HWND s_bringWindowToTopHWND;
@@ -71,8 +70,8 @@ private:
     static int s_setWindowFocuscx;
     static int s_setWindowFocuscy;
     static UINT s_setWindowFocusuFlags;
-    static HHOOK s_keyboardHook;
 
+private:
     // Helper methods for hooking and unhooking
     static bool HookFunction(void* targetFunction, void* hookFunction, BYTE* originalBytes);
     static bool UnhookFunction(void* targetFunction, BYTE* originalBytes);

@@ -27,6 +27,8 @@ set(DLL_HOOKS_SOURCES
     src/dllmain_refactored.cpp
     src/hooks/windows_api/windows_api_hooks.cpp
     src/hooks/windows_api/hooked_functions.cpp
+    src/hooks/windows_api/keyboard_hook.cpp
+    src/hooks/windows_api/hook_utils.cpp
     src/hooks/dx_hook_core.cpp
     src/hooks/swap_chain_hook.cpp
     src/memory/memory_scanner.cpp

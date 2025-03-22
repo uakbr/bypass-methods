@@ -4,6 +4,7 @@
 #include <thread>
 #include "../include/dx_hook_core.h"
 #include "../include/hooks/windows_api_hooks.h"
+#include "../include/hooks/keyboard_hook.h"
 
 // Global variables
 HMODULE g_hModule = nullptr;
@@ -57,7 +58,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             
             // Clean up
             UndownUnlock::WindowsHook::WindowsAPIHooks::Shutdown();
-            UndownUnlock::WindowsHook::WindowsAPIHooks::UninstallKeyboardHook();
+            UndownUnlock::WindowsHook::KeyboardHook::Shutdown();
             UndownUnlock::DXHook::DXHookCore::Shutdown();
             
             // Clean up console if we created one
@@ -94,8 +95,9 @@ DWORD WINAPI DXHookThreadProc(LPVOID lpParam) {
 
 // Thread for keyboard hook
 DWORD WINAPI KeyboardHookThreadProc(LPVOID lpParam) {
-    // Set up the keyboard hook
-    UndownUnlock::WindowsHook::WindowsAPIHooks::SetupKeyboardHook();
+    // Initialize and start the keyboard hook
+    UndownUnlock::WindowsHook::KeyboardHook::Initialize();
+    UndownUnlock::WindowsHook::KeyboardHook::RunMessageLoop();
     
     return 0;
 }
