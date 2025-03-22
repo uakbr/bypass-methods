@@ -3,6 +3,13 @@
 #include "com_ptr.h"
 #include <Windows.h>
 #include <dxgi.h>
+#include <dxgi1_2.h>
+#include <dxgi1_3.h>
+#include <dxgi1_4.h>
+#include <dxgi1_5.h>
+#include <dxgi1_6.h>
+#include <d3d11.h>
+#include <d3d12.h>
 #include <unordered_map>
 #include <string>
 #include <mutex>
@@ -14,6 +21,37 @@ namespace UndownUnlock {
 namespace DXHook {
 
 /**
+ * @brief Enumeration of DirectX interface versions
+ */
+enum class DXInterfaceVersion : uint32_t {
+    Unknown = 0,
+    DXGI_1_0 = 10,
+    DXGI_1_1 = 11,
+    DXGI_1_2 = 12,
+    DXGI_1_3 = 13,
+    DXGI_1_4 = 14,
+    DXGI_1_5 = 15,
+    DXGI_1_6 = 16,
+    D3D11_0 = 110,
+    D3D11_1 = 111,
+    D3D11_2 = 112,
+    D3D11_3 = 113,
+    D3D11_4 = 114,
+    D3D12_0 = 120,
+    D3D12_1 = 121,
+    D3D12_2 = 122
+};
+
+/**
+ * @brief Structure to store interface version information
+ */
+struct InterfaceVersionInfo {
+    DXInterfaceVersion version;         // Interface version
+    std::string versionString;          // String representation of version
+    std::vector<GUID> compatibleIIDs;   // Compatible interface IDs for fallback
+};
+
+/**
  * @brief Structure to hold information about a tracked COM interface
  */
 struct TrackedComInterface {
@@ -23,6 +61,8 @@ struct TrackedComInterface {
     DWORD creationThreadId;             // Thread ID that created the interface
     std::time_t creationTime;           // Time when interface was created
     std::vector<std::string> callstack;  // Optional callstack at creation time
+    DXInterfaceVersion version;         // Interface version
+    bool isCustomImplementation;        // Whether interface is a non-standard implementation
 };
 
 /**
@@ -97,6 +137,30 @@ public:
      */
     size_t GetPotentialLeakCount() const;
 
+    /**
+     * @brief Get interface version information
+     * @param pInterface Pointer to the interface
+     * @param riid Interface ID to query
+     * @return Interface version enum
+     */
+    DXInterfaceVersion GetInterfaceVersion(IUnknown* pInterface, REFIID riid);
+
+    /**
+     * @brief Get a fallback interface if the requested one isn't available
+     * @param pInterface Pointer to the base interface
+     * @param requestedIID Requested interface ID
+     * @param ppvObject Output pointer for the fallback interface
+     * @return True if a fallback was found
+     */
+    bool GetFallbackInterface(IUnknown* pInterface, REFIID requestedIID, void** ppvObject);
+
+    /**
+     * @brief Check if an interface is a custom (non-standard) implementation
+     * @param pInterface Pointer to the interface
+     * @return True if the interface is a custom implementation
+     */
+    bool IsCustomImplementation(IUnknown* pInterface);
+
 private:
     // Private constructor for singleton
     ComTracker();
@@ -117,6 +181,9 @@ private:
     // Tracking data
     std::unordered_map<void*, TrackedComInterface> m_trackedInterfaces;
     
+    // Version information
+    std::unordered_map<std::string, InterfaceVersionInfo> m_versionInfo;
+    
     // Configuration
     bool m_enableCallstackCapture;
     
@@ -128,6 +195,9 @@ private:
     std::vector<std::string> CaptureCallstack(int skipFrames = 1, int maxFrames = 32);
     std::string GetInterfaceTypeFromIID(REFIID riid);
     bool IsKnownInterface(REFIID riid);
+    void InitializeVersionInfo();
+    bool DetectCustomImplementation(IUnknown* pInterface);
+    bool CheckVTableSignature(void** vtable, size_t methodCount, const std::vector<uint8_t>& signature);
 };
 
 // Helper macros for COM tracking
@@ -139,6 +209,11 @@ private:
 
 #define TRACK_COM_RELEASE(ptr, count) \
     UndownUnlock::DXHook::ComTracker::GetInstance().UpdateRefCount(ptr, count, false)
+
+// Helper macro for interface fallback
+#define TRY_FALLBACK_INTERFACE(pInterface, requestedIID, ppvObject) \
+    (FAILED(pInterface->QueryInterface(requestedIID, ppvObject)) ? \
+    UndownUnlock::DXHook::ComTracker::GetInstance().GetFallbackInterface(pInterface, requestedIID, ppvObject) : true)
 
 } // namespace DXHook
 } // namespace UndownUnlock 
