@@ -58,11 +58,11 @@ UndownUnlock is a DirectX hooking system designed to bypass security protections
 1. Build the project
 2. Use the Python injector script to inject the DLL:
    ```
-   python test_injector.py --name "TargetProcess.exe"
+   python python/tools/test_injector.py --name "TargetProcess.exe"
    ```
    or
    ```
-   python test_injector.py --pid 1234
+   python python/tools/test_injector.py --pid 1234
    ```
 
 ### Using the Test Client
@@ -85,19 +85,31 @@ ctest -C Release
 ```
 
 ## Project Structure
-- **DLLHooks/**: Original DLL injection project (Visual Studio)
-- **include/**: Header files
-  - **com_hooks/**: COM interface hooking code
-  - **memory/**: Memory manipulation functions
-  - **signatures/**: DirectX function signatures
-  - **hooks/**: Windows API hooking code
-- **src/**: Implementation files
-  - **com_hooks/**: COM hooking implementation
-  - **frame/**: Frame extraction from DirectX
-  - **hooks/**: DirectX and Windows API hooking
-  - **memory/**: Memory scanning implementation
+- **DLLHooks/**: DLL project files for Visual Studio
+- **src/**: C++ implementation files
+  - **com_hooks/**: COM interface hooking implementation
+  - **frame/**: DirectX frame extraction
+  - **hooks/**: Windows API and DirectX hooking
+  - **memory/**: Memory scanning and pattern matching
   - **shared/**: Shared memory transport
-  - **signatures/**: Pattern implementation
+  - **signatures/**: DirectX function signatures
+- **include/**: C++ header files
+  - **com_hooks/**: COM hooking declarations
+  - **hooks/**: API hooking declarations
+  - **memory/**: Memory operations
+  - **signatures/**: Pattern definitions
+- **python/**: Python code
+  - **capture/**: Screen capture utilities
+  - **tools/**: Injection and utility scripts
+  - **accessibility/**: Accessibility control modules
+  - **tests/**: Python-based tests
+  - **examples/**: Example usage scripts
+  - **requirements/**: Python dependencies
+- **tests/**: C++ test code
+- **docs/**: Documentation
+  - **planning/**: Project plans and todo lists
+- **scripts/**: Batch files and automation scripts
+- **build/**: Build output directory (not in repo)
 
 ## Contributing
 Contributions are welcome! Please feel free to submit a Pull Request.
