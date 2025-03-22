@@ -68,4 +68,29 @@ if(WIN32)
 endif()
 
 # Register Windows Integration test with CTest
-add_test(NAME windows_integration_test COMMAND windows_integration_test) 
+add_test(NAME windows_integration_test COMMAND windows_integration_test)
+
+# Virtual Camera System Test (standalone)
+add_executable(virtual_camera_test test_virtual_camera.cpp)
+target_link_libraries(virtual_camera_test PRIVATE
+    UndownUnlockDXHook
+    dbghelp
+)
+
+# Add additional system libraries needed for Virtual Camera
+if(WIN32)
+    target_link_libraries(virtual_camera_test PRIVATE
+        strmiids
+        mfplat
+        mfuuid
+        d3d11
+        dxgi
+        dxguid
+        ole32
+        oleaut32
+        uuid
+    )
+endif()
+
+# Register Virtual Camera test with CTest
+add_test(NAME virtual_camera_test COMMAND virtual_camera_test) 
