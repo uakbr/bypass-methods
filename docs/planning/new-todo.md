@@ -1,366 +1,169 @@
-# UndownUnlock Project: Comprehensive Implementation Plan
+# UndownUnlock Project: Implementation Plan
 
 ## Project Overview
-UndownUnlock is a sophisticated DirectX and Windows API hooking framework designed for educational purposes. It intercepts graphics API calls and Windows system functions to enable frame extraction, window management control, and other system-level monitoring capabilities. This document outlines the remaining work required to complete the project.
+UndownUnlock is a sophisticated DirectX and Windows API hooking framework designed for educational purposes. It intercepts graphics API calls and Windows system functions to enable frame extraction, window management control, and other system-level monitoring capabilities. This document outlines prioritized tasks to complete the project.
 
-## 1. Core Architecture and Codebase Refactoring
+## Priority 1: Critical Path (Next 2 Weeks)
 
-### 1.1 Complete Migration from Monolithic to Modular Design
-- **Migrate Windows API Hooks**
-  - Move remaining window management hooks from `DLLHooks/dllmain.cpp` to `src/hooks/windows_api/windows_api_hooks.cpp`
-  - Properly encapsulate global state variables into class member variables
-  - Implement RAII design patterns for resource management
-  - Convert all remaining C-style function pointers to C++ method pointers where possible
+### 1.1 Code Migration and Architecture Refactoring
+- [x] Create base hook interface structure
+- [x] Implement DirectX vtable hook system
+- [ ] **IMPORTANT**: Migrate remaining window management hooks from `DLLHooks/dllmain.cpp` to `src/hooks/windows_api/windows_api_hooks.cpp`
+- [ ] Refactor global state variables into class member variables
+- [ ] Implement RAII patterns for resource management
+- [ ] Convert remaining C-style function pointers to C++ method pointers
 
-- **Refactor Hook Installation Mechanisms**
-  - Create unified hook installation framework in `hook_utils.cpp`
-  - Implement x86/x64 architecture detection for proper hook trampoline generation
-  - Add hook integrity validation and verification
-  - Create self-healing hooks with reinstallation capabilities
+### 1.2 Hook Installation Framework
+- [x] Create basic hook utility functions
+- [ ] Unify hook installation in `hook_utils.cpp` with proper error handling
+- [ ] Implement architecture detection (x86/x64) for proper trampoline generation
+- [ ] Add hook integrity validation mechanisms
+- [ ] Create self-healing hooks that can detect tampering and reinstall
 
-- **Clean Up Memory Management**
-  - Replace raw pointers with smart pointers (std::unique_ptr, std::shared_ptr)
-  - Implement proper COM interface reference counting
-  - Add RAII wrappers for Windows-specific handles (HANDLE, HMODULE, etc.)
-  - Create memory leak detection and reporting system
+### 1.3 Memory Management
+- [ ] Replace raw pointers with appropriate smart pointers
+- [ ] Implement proper COM interface reference counting
+- [ ] Add RAII wrappers for Windows handles
+- [ ] Implement basic memory leak detection
 
-### 1.2 Fix and Improve Build System
-- **Fix CMake Configuration Issues**
-  - Correct `set_tests_properties` error in main CMakeLists.txt line 42
-  - Add proper `project()` declaration to tests CMakeLists.txt
-  - Fix path references for cross-platform compatibility
+### 1.4 Build System Fixes
+- [ ] **URGENT**: Fix `set_tests_properties` error in main CMakeLists.txt line 42
+- [ ] Add proper `project()` declaration to tests CMakeLists.txt
+- [ ] Fix path references for cross-platform compatibility
+- [ ] Generate proper Visual Studio project files
 
-- **Create Cross-Platform Build Support**
-  - Add platform-specific conditional compilation blocks
-  - Implement feature detection rather than platform detection where possible
-  - Create macOS/Linux stubs for Windows-specific APIs for development purposes
+## Priority 2: Core Functionality (2-4 Weeks)
 
-- **Improve Visual Studio Integration**
-  - Generate proper `.vcxproj` files from CMake
-  - Add IntelliSense support with proper include paths
-  - Create version-specific build configurations (Debug, Release, RelWithDebInfo)
+### 2.1 DirectX Hooking Improvements
+- [x] Implement SwapChain hook system
+- [x] Create frame extraction pipeline
+- [ ] Complete interface detection for DirectX 9, 10, 11, 12
+- [ ] Implement interface version detection and vtable validation
+- [ ] Add fallback mechanisms for unusual SwapChain implementations
+- [ ] Optimize staging texture management for better performance
 
-- **Set Up Proper Dependency Management**
-  - Use CMake `find_package` for third-party dependencies
-  - Add FetchContent for automatic dependency download when not found
-  - Create vendoring strategy for critical dependencies
+### 2.2 Windows API Hook Completion
+- [ ] Finish SetForegroundWindow and GetForegroundWindow hooks
+- [ ] Implement SetWindowPos, MoveWindow, and SetWindowPlacement hooks
+- [ ] Complete ShowWindow and SetWindowLong hooks
+- [ ] Implement remaining process control hooks (CreateProcess, etc.)
+- [ ] Complete clipboard protection hooks
 
-## 2. Core Functionality Implementation
+### 2.3 Shared Memory Transport Optimization
+- [x] Implement basic shared memory transport
+- [ ] Optimize ring buffer with cache-aligned structures
+- [ ] Add compression support for high-resolution frames
+- [ ] Implement adaptive buffer sizing based on frame size
+- [ ] Replace SRWLock with more efficient synchronization primitives
 
-### 2.1 DirectX Hooking System
-- **Complete the DirectX Hook Core**
-  - Implement missing interface detection for all versions of DirectX (9, 10, 11, 12)
-  - Add Vulkan API support for broader application compatibility
-  - Create unified hook interface for different graphics APIs
-  - Implement vtable validation and recovery
+## Priority 3: Pattern Scanning and Anti-Detection (3-6 Weeks)
 
-- **Enhance SwapChain Hooks**
-  - Complete version-specific vtable layout detection
-  - Add support for DXGI 1.2/1.3/1.4/1.5/1.6 interfaces
-  - Implement hook stability improvements with interface verification
-  - Create fallback mechanisms for unusual SwapChain implementations
+### 3.1 Memory Scanner Improvements
+- [x] Implement basic Boyer-Moore-Horspool algorithm
+- [x] Add support for wildcard patterns
+- [ ] Optimize pattern matching engine for better performance
+- [ ] Add IDA-style signature parsing
+- [ ] Implement multi-pattern scanning in a single pass
+- [ ] Add PE section analysis for targeted scanning
 
-- **Improve Frame Extraction**
-  - Optimize staging texture creation and management
-  - Implement multi-frame buffering to reduce latency
-  - Add format conversion support for all DXGI formats
-  - Create adaptive resolution scaling based on performance metrics
+### 3.2 LockDown Browser Signature Database
+- [ ] Create signature patterns for major LockDown Browser versions
+- [ ] Implement API call pattern analysis for protection functions
+- [ ] Add code flow analysis to locate protection decision points
+- [ ] Create detection patterns for anti-capture mechanisms
 
-### 2.2 Windows API Hooking System
-- **Complete Window Management Hooks**
-  - Finish `SetForegroundWindow` and `GetForegroundWindow` hooks
-  - Implement `SetWindowPos`, `MoveWindow`, and `SetWindowPlacement` hooks
-  - Add `ShowWindow` and `SetWindowLong` hooks for window style modification
-  - Create user32.dll export table hook verification
+### 3.3 Anti-Detection Features
+- [ ] Implement hook concealment techniques
+- [ ] Add timing normalization for QueryPerformanceCounter
+- [ ] Create call stack spoofing for hook detection evasion
+- [ ] Implement thread-safe hook management
 
-- **Implement Process Control Hooks**
-  - Complete `TerminateProcess` and `ExitProcess` hooks
-  - Add `CreateProcess` hook for child process monitoring
-  - Implement `OpenProcess` hook to prevent external process manipulation
-  - Create kernel32.dll hook validation system
+## Priority 4: Testing and Quality Assurance (Ongoing)
 
-- **Finish Clipboard Protection**
-  - Complete `EmptyClipboard` and `SetClipboardData` hooks
-  - Add `GetClipboardData` hook to control clipboard read access
-  - Implement clipboard format filtering
-  - Create clipboard content encryption for sensitive data
-
-### 2.3 Shared Memory Transport
-- **Optimize Transport Protocol**
-  - Improve ring buffer implementation with cache-aligned structures
-  - Add compression support for high-resolution frames
-  - Implement adaptive buffer sizing based on frame dimensions
-  - Create multi-channel support for metadata separation
-
-- **Enhance Synchronization Mechanisms**
-  - Replace basic SRWLock with optimized reader-writer lock
-  - Implement lock-free queue for frame metadata
-  - Add atomic operations for critical counters
-  - Create wait-free producer/consumer model where possible
-
-- **Improve Error Handling**
-  - Add robust error detection and recovery
-  - Implement timeout mechanisms for hung producers/consumers
-  - Create diagnostics for tracking buffer utilization
-  - Add extensive logging for synchronization issues
-
-## 3. Pattern Scanning and Protection Bypass
-
-### 3.1 Improve Memory Scanner
-- **Enhance Pattern Matching Engine**
-  - Optimize Boyer-Moore-Horspool algorithm implementation
-  - Add fuzzy matching with configurable threshold
-  - Implement multi-pattern scanning in a single pass
-  - Create parallel scanning with thread pool
-
-- **Extend Memory Region Analysis**
-  - Add PE section analysis (.text, .data, .rdata, etc.)
-  - Implement JIT code region detection
-  - Create memory permission analysis and tracking
-  - Add module boundary detection with export table analysis
-
-- **Improve Signature Management**
-  - Create IDA-style signature import/export
-  - Implement signature versioning and validation
-  - Add auto-generation of signatures from binary differences
-  - Create signature effectiveness metrics
-
-### 3.2 Protection Mechanism Analysis
-- **Complete LockDown Browser Signature Database**
-  - Add version-specific signature sets for all major versions
-  - Create behavioral pattern detection for anti-capture mechanisms
-  - Implement timing checks identification
-  - Add focus verification detection patterns
-
-- **Develop Anti-Detection Features**
-  - Implement hook concealment techniques
-  - Add timing normalization for QueryPerformanceCounter
-  - Create call stack spoofing for hook detection evasion
-  - Implement code integrity check bypasses
-
-- **Enhance Runtime Verification**
-  - Add automated testing of patch effectiveness
-  - Create sandbox environment for patch validation
-  - Implement rollback mechanism for unsuccessful patches
-  - Add continuous runtime monitoring for detection attempts
-
-## 4. Testing and Quality Assurance
-
-### 4.1 Unit Testing Framework
-- **Expand Test Coverage**
-  - Create tests for each hook category (Window, Process, Clipboard)
-  - Add DirectX hook specific tests
-  - Implement shared memory transport tests
-  - Create pattern scanner accuracy tests
-
-- **Improve Test Infrastructure**
-  - Fix CMakeLists.txt for proper test execution
-  - Add test fixtures with proper setup/teardown
-  - Implement mock objects for external dependencies
-  - Create test data generation utilities
-
-- **Add Performance Testing**
-  - Implement benchmark tests for critical paths
-  - Create latency measurement for hook overhead
-  - Add frame rate impact analysis
-  - Implement memory consumption tracking
+### 4.1 Unit Testing
+- [ ] Create basic test framework for hook functionality
+- [ ] Implement tests for Windows API hooks
+- [ ] Add tests for DirectX hook components
+- [ ] Create shared memory transport tests
 
 ### 4.2 Integration Testing
-- **Develop End-to-End Tests**
-  - Create test applications that use DirectX rendering
-  - Implement automatic validation of hook effectiveness
-  - Add visual verification of captured frames
-  - Create stress tests for stability verification
+- [ ] Develop test applications with DirectX rendering
+- [ ] Implement automated validation of hook effectiveness
+- [ ] Create stress tests for stability verification
+- [ ] Test compatibility with different applications
 
-- **Application Compatibility Testing**
-  - Test with major applications using different DirectX versions
-  - Create compatibility matrix for supported applications
-  - Implement automatic compatibility testing
-  - Add performance impact measurements
+## Priority 5: Documentation and User Experience (Later Stage)
 
-- **Security and Anti-Detection Testing**
-  - Create tests for hook detection tools
-  - Implement timing analysis to detect abnormalities
-  - Add tests for common anti-cheat systems
-  - Create detection avoidance verification
+### 5.1 Developer Documentation
+- [ ] Document API functions and classes
+- [ ] Create architecture diagrams
+- [ ] Write implementation guides for each component
+- [ ] Add troubleshooting documentation
 
-## 5. Continuous Integration and Deployment
+### 5.2 User Interface and Tools
+- [ ] Create monitoring interface for hook status
+- [ ] Add frame capture preview tools
+- [ ] Implement configuration options
+- [ ] Develop diagnostics utilities
 
-### 5.1 CI/CD Pipeline Setup
-- **Configure GitHub Actions**
-  - Create workflow for Windows builds
-  - Add cross-platform build verification where possible
-  - Implement automatic test execution
-  - Add code coverage reporting
+## In-Progress Tasks (Current Focus)
 
-- **Implement Quality Gates**
-  - Add static code analysis (clang-tidy, cppcheck)
-  - Implement code formatting verification
-  - Create performance regression detection
-  - Add security vulnerability scanning
+### Currently Working On
+- Creating signature database for LockDown Browser
+- Implementing pattern validation for protection routines
+- Enhancing fuzzy pattern matching
+- Designing process for extracting new signatures
 
-- **Setup Automated Deployment**
-  - Create release packaging scripts
-  - Implement version numbering and tracking
-  - Add changelog generation
-  - Create installer creation system
+### Next Steps
+- [ ] Implement IDA-style signature parsing
+- [ ] Add PE section analysis for targeted scanning
+- [ ] Begin anti-detection mechanisms
+- [ ] Implement render target hooks for Direct3D
 
-### 5.2 Release Management
-- **Version Control Strategy**
-  - Implement semantic versioning
-  - Create branch strategy for features/hotfixes
-  - Add version tagging and release notes
-  - Implement backwards compatibility verification
+## Completed Items
 
-- **Distribution System**
-  - Create installer packages for different platforms
-  - Implement update notification mechanism
-  - Add integrity verification for downloads
-  - Create distribution channel management
+### DirectX Presentation Chain Hooks
+- [x] Create memory scanner to locate D3D11.dll/DXGI.dll
+- [x] Implement vtable offset calculator for interface methods 
+- [x] Develop signature patterns for SwapChain creation
+- [x] Add version-specific vtable layout detection
 
-## 6. Documentation and User Experience
+### COM Interface Detection
+- [x] Hook CreateDXGIFactory and related entry points
+- [x] Implement interface tracking for SwapChain creation
+- [x] Create COM reference counting management
+- [x] Build interface pointer validation
 
-### 6.1 Developer Documentation
-- **API Documentation**
-  - Create comprehensive function/class documentation
-  - Add usage examples for all major components
-  - Implement automatic documentation generation
-  - Create architecture diagrams and explanations
+### Frame Extraction
+- [x] Implement ID3D11Texture2D mapping from backbuffer
+- [x] Create staging texture with D3D11_USAGE_STAGING
+- [x] Add Map/Unmap operations with D3D11_MAP_READ
+- [x] Create shared memory transport with ring buffer
 
-- **Integration Guide**
-  - Develop guide for integrating with existing applications
-  - Add troubleshooting section for common issues
-  - Create performance optimization recommendations
-  - Implement security best practices documentation
+## Technical Debt and Future Optimization
 
-- **Contribution Guidelines**
-  - Create coding standards document
-  - Add pull request template and process
-  - Implement issue template and categorization
-  - Create development environment setup guide
+### Code Quality
+- [ ] Improve error handling and logging
+- [ ] Standardize naming conventions and style
+- [ ] Remove magic numbers and hardcoded values
+- [ ] Add comprehensive comments
 
-### 6.2 User Documentation
-- **Installation Guide**
-  - Create step-by-step installation instructions
-  - Add environment requirements and prerequisites
-  - Implement troubleshooting section for installation issues
-  - Create quick start guide
+### Performance
+- [ ] Optimize hook installation and execution
+- [ ] Reduce memory footprint of capture system
+- [ ] Implement frame compression for network transport
+- [ ] Create adaptive frame rate based on consumer capacity
 
-- **Usage Documentation**
-  - Develop detailed usage instructions
-  - Add configuration options documentation
-  - Create common use case examples
-  - Implement command reference for CLI tools
+## Long-Term Roadmap
 
-- **Troubleshooting Guide**
-  - Create common issues and solutions documentation
-  - Add diagnostic procedure explanations
-  - Implement error code reference
-  - Create community support resources
+### Advanced Features
+- [ ] Add OpenGL/Vulkan support
+- [ ] Implement GPU-accelerated frame processing
+- [ ] Create network streaming capabilities
+- [ ] Add on-the-fly hook configuration
 
-## 7. User Interface and Tools
-
-### 7.1 Monitoring and Control Interface
-- **Develop Monitoring UI**
-  - Create real-time hook status visualization
-  - Add frame capture preview
-  - Implement performance metrics dashboard
-  - Create logging and diagnostic displays
-
-- **Control Panel Implementation**
-  - Add hook enable/disable controls
-  - Create configuration management interface
-  - Implement capture settings adjustment
-  - Add filter and processing controls
-
-- **Diagnostic Tools**
-  - Create hook verification utilities
-  - Add memory analysis tools
-  - Implement log analysis and filtering
-  - Create crash dump analysis utilities
-
-### 7.2 Auxiliary Tools
-- **Enhance Injection Utility**
-  - Improve process selection interface
-  - Add automatic elevation for admin privileges
-  - Implement driver-based injection alternatives
-  - Create persistence options for injected DLLs
-
-- **Frame Processing Tools**
-  - Add real-time frame processing options (scaling, filtering)
-  - Create frame recording capabilities
-  - Implement frame extraction to common formats
-  - Add network streaming capabilities
-
-- **Security Analysis Tools**
-  - Create hook detection simulation
-  - Add integrity verification utilities
-  - Implement anti-tampering test tools
-  - Create security posture evaluation
-
-## 8. Performance Optimization
-
-### 8.1 Hook Efficiency
-- **Reduce Hook Overhead**
-  - Optimize trampoline code generation
-  - Implement minimal context saving where possible
-  - Add selective hooking based on usage patterns
-  - Create fast path for frequently called functions
-
-- **Improve Memory Efficiency**
-  - Reduce allocation frequency with object pooling
-  - Implement zero-copy data paths where possible
-  - Add memory mapping optimization for large buffers
-  - Create virtual memory commit/decommit strategies
-
-- **Enhance Concurrency**
-  - Implement lock-free algorithms for critical paths
-  - Add thread pool for background tasks
-  - Create task-based parallelism for scanning operations
-  - Implement wait-free synchronization where possible
-
-### 8.2 Frame Processing Optimization
-- **Improve Capture Performance**
-  - Optimize staging texture management
-  - Add hardware acceleration for format conversion
-  - Implement parallel processing for multiple frames
-  - Create adaptive quality settings based on system load
-
-- **Enhance Delivery Efficiency**
-  - Add compression options for network transport
-  - Implement prioritized frame delivery
-  - Create adaptive frame rate based on consumer capacity
-  - Add frame diffing to reduce bandwidth requirements
-
-## Timeline and Prioritization
-
-### Phase 1: Critical Path (1-2 months)
-- Complete core code migration from monolithic to modular structure
-- Fix CMake build system issues
-- Implement remaining Windows API hooks
-- Complete DirectX hooking infrastructure
-- Fix basic pattern scanning functionality
-
-### Phase 2: Enhanced Functionality (2-3 months)
-- Improve shared memory transport robustness
-- Enhance frame extraction capabilities
-- Complete LockDown Browser signature database
-- Implement anti-detection mechanisms
-- Create basic test framework
-
-### Phase 3: Quality and Performance (1-2 months)
-- Expand test coverage across all components
-- Implement performance optimizations
-- Add security hardening features
-- Create CI/CD pipeline
-- Develop basic documentation
-
-### Phase 4: User Experience and Polish (2-3 months)
-- Create monitoring and control interface
-- Implement advanced diagnostic tools
-- Complete comprehensive documentation
-- Add enhanced auxiliary tools
-- Finalize release management system
-
-## Conclusion
-This implementation plan outlines the comprehensive work required to complete the UndownUnlock project. By following this structured approach, we can ensure the project achieves its technical goals while maintaining high quality standards and usability. 
+### Integration
+- [ ] Integrate with accessibility framework
+- [ ] Create API for external applications
+- [ ] Add plugin system for custom hooks
+- [ ] Develop cross-platform support where feasible 
