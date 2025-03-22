@@ -33,11 +33,13 @@ set(DLL_HOOKS_SOURCES
     src/hooks/swap_chain_hook.cpp
     src/memory/memory_scanner.cpp
     src/memory/pattern_scanner.cpp
+    src/memory/memory_tracker.cpp
     src/frame/frame_extractor.cpp
     src/shared/shared_memory_transport.cpp
     src/signatures/dx_signatures.cpp
     src/signatures/lockdown_signatures.cpp
     src/com_hooks/factory_hooks.cpp
+    src/com_hooks/com_tracker.cpp
 )
 
 # Define source files for the test client
@@ -70,6 +72,7 @@ target_link_libraries(UndownUnlockDXHook PRIVATE
     d3d11
     dxgi
     windowscodecs
+    dbghelp
 )
 
 # Installation rules

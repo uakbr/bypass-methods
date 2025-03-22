@@ -7,6 +7,8 @@
 #include "../include/dx_hook_core.h"
 #include "../include/hooks/windows_api_hooks.h"
 #include "../include/hooks/keyboard_hook.h"
+#include "../include/com_hooks/com_tracker.h"
+#include "../include/memory/memory_tracker.h"
 
 // Global variables
 std::unique_ptr<std::thread> g_hookThread;
@@ -100,6 +102,21 @@ public:
         
         std::cout << "UndownUnlock DirectX Hook DLL loaded" << std::endl;
         
+        // Initialize memory tracker with callstack capture enabled
+        if (!UndownUnlock::Memory::MemoryTracker::GetInstance().Initialize(true)) {
+            std::cerr << "Failed to initialize memory tracker" << std::endl;
+            return false;
+        }
+        
+        // Set memory leak threshold to avoid noise from small allocations
+        UndownUnlock::Memory::MemoryTracker::GetInstance().SetLeakThreshold(1024); // 1KB
+        
+        // Initialize COM tracker with callstack capture enabled
+        if (!UndownUnlock::DXHook::ComTracker::GetInstance().Initialize(true)) {
+            std::cerr << "Failed to initialize COM tracker" << std::endl;
+            return false;
+        }
+        
         // Initialize Windows API hooks
         if (!UndownUnlock::WindowsHook::WindowsAPIHooks::Initialize()) {
             std::cerr << "Failed to initialize Windows API hooks" << std::endl;
@@ -127,10 +144,17 @@ public:
             m_threadManager.reset();
         }
         
-        // Then clean up the hooks
+        // Then clean up the hooks and trackers
         UndownUnlock::WindowsHook::WindowsAPIHooks::Shutdown();
         UndownUnlock::WindowsHook::KeyboardHook::Shutdown();
         UndownUnlock::DXHook::DXHookCore::Shutdown();
+        
+        // Dump any COM leaks and memory leaks
+        std::cout << "\n===== COM Interface Leak Report =====" << std::endl;
+        UndownUnlock::DXHook::ComTracker::GetInstance().Shutdown();
+        
+        std::cout << "\n===== Memory Leak Report =====" << std::endl;
+        UndownUnlock::Memory::MemoryTracker::GetInstance().Shutdown();
         
         m_initialized = false;
     }
@@ -194,8 +218,11 @@ void DXHookThreadProc() {
     
     // Main loop - keep the thread alive and handle any ongoing tasks
     while (!g_shutdown) {
+        // Check for COM reference counting issues periodically
+        UndownUnlock::DXHook::ComTracker::GetInstance().CheckForIssues();
+        
         // Sleep to avoid high CPU usage
-        Sleep(100);
+        Sleep(5000); // Check every 5 seconds
     }
     
     std::cout << "DirectX hook thread shutting down" << std::endl;
@@ -215,6 +242,22 @@ void KeyboardHookThreadProc() {
     UndownUnlock::WindowsHook::KeyboardHook::RunMessageLoop();
     
     std::cout << "Keyboard hook thread shutting down" << std::endl;
+}
+
+// Export a test function to dump COM interface and memory allocation status
+extern "C" __declspec(dllexport) void DumpStatus() {
+    std::cout << "\n===== Current COM Interface Status =====" << std::endl;
+    UndownUnlock::DXHook::ComTracker::GetInstance().DumpTrackedInterfaces(false);
+    
+    std::cout << "\n===== Current Memory Status =====" << std::endl;
+    UndownUnlock::Memory::MemoryStats stats = UndownUnlock::Memory::MemoryTracker::GetInstance().GetStats();
+    std::cout << "Current allocations: " << stats.currentAllocations 
+              << " (" << stats.currentBytes << " bytes)" << std::endl;
+    std::cout << "Peak allocations: " << stats.peakAllocations
+              << " (" << stats.peakBytes << " bytes)" << std::endl;
+    std::cout << "Total allocations: " << stats.totalAllocations 
+              << " (" << stats.totalBytes << " bytes)" << std::endl;
+    std::cout << "Total frees: " << stats.totalFrees << std::endl;
 }
 
 // Export a simple test function

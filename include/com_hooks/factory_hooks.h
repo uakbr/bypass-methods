@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <atomic>
+#include "com_ptr.h"
 
 namespace UndownUnlock {
 namespace DXHook {
@@ -119,6 +120,68 @@ private:
 
     // SwapChain interface detection
     bool ValidateInterface(IUnknown* pInterface, REFIID riid);
+};
+
+// Example COM interface hooking class
+class IDXGISwapChainHook {
+public:
+    IDXGISwapChainHook() {}
+    
+    bool Hook(IDXGISwapChain* pSwapChain) {
+        if (!pSwapChain) return false;
+        
+        // Store the swapchain using our ComPtr
+        m_swapChain = ComPtr<IDXGISwapChain>(pSwapChain);
+        
+        // Get the vtable pointer
+        void** vtable = *reinterpret_cast<void***>(pSwapChain);
+        
+        // Store original Present (index 8 in IDXGISwapChain vtable)
+        m_originalPresent = reinterpret_cast<Present_t>(vtable[8]);
+        
+        // Hook Present
+        DWORD oldProtect;
+        if (VirtualProtect(&vtable[8], sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+            vtable[8] = reinterpret_cast<void*>(HookPresent);
+            VirtualProtect(&vtable[8], sizeof(void*), oldProtect, &oldProtect);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    void Unhook() {
+        if (m_swapChain) {
+            void** vtable = *reinterpret_cast<void***>(m_swapChain.Get());
+            
+            // Restore original Present
+            DWORD oldProtect;
+            if (VirtualProtect(&vtable[8], sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+                vtable[8] = reinterpret_cast<void*>(m_originalPresent);
+                VirtualProtect(&vtable[8], sizeof(void*), oldProtect, &oldProtect);
+            }
+            
+            // Release the swapchain
+            m_swapChain.Release();
+        }
+    }
+    
+private:
+    typedef HRESULT (STDMETHODCALLTYPE *Present_t)(
+        IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
+    
+    Present_t m_originalPresent = nullptr;
+    ComPtr<IDXGISwapChain> m_swapChain;
+    
+    static HRESULT STDMETHODCALLTYPE HookPresent(
+        IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags) {
+        
+        // Do something with the frame here...
+        
+        // Call the original Present
+        // Need to get the instance, but this is just an example
+        return nullptr;
+    }
 };
 
 } // namespace DXHook

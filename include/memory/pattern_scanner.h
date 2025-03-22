@@ -28,6 +28,14 @@ struct MemoryRegion {
     size_t size;
     DWORD protection;
     std::string name; // Module or section name
+    
+    // New fields for optimized scanning
+    bool isExecutable = false;     // Whether this is executable memory
+    bool isModuleRegion = false;   // Whether this belongs to a loaded module
+    bool isPEModule = false;       // Whether this is a PE module
+    bool codeSection = false;      // Whether this is a code section in a PE module
+    int codePriority = 0;          // Priority for code sections (higher = scanned first)
+    int dataPriority = 0;          // Priority for data sections
 };
 
 /**
@@ -115,15 +123,27 @@ public:
      * @param callback Function to call with progress (0-100)
      */
     void SetProgressCallback(std::function<void(int)> callback);
+    
+    /**
+     * @brief Set the number of threads to use for parallel scanning
+     * @param numThreads Number of threads (0 = use hardware concurrency)
+     */
+    void SetNumThreads(unsigned int numThreads);
 
 private:
     std::vector<MemoryRegion> m_memoryRegions;
     std::function<void(int)> m_progressCallback;
+    unsigned int m_numThreads;  // Number of threads to use for scanning
 
     /**
      * @brief Initialize memory regions based on current process memory map
      */
     void InitializeMemoryRegions();
+    
+    /**
+     * @brief Analyze PE sections for more efficient scanning
+     */
+    void AnalyzePESections();
 
     /**
      * @brief Implement Boyer-Moore-Horspool algorithm with wildcards
@@ -141,11 +161,11 @@ private:
     );
 
     /**
-     * @brief Perform fuzzy matching for pattern with Levenshtein distance
+     * @brief Perform fuzzy matching for pattern with approximate matching
      * @param data Pointer to memory to search
      * @param dataSize Size of memory region
      * @param pattern Pattern to search for
-     * @param maxDistance Maximum Levenshtein distance allowed
+     * @param maxDistance Maximum distance allowed (0-100, where 0 means exact match)
      * @return Vector of results with confidence score
      */
     std::vector<std::pair<void*, int>> FuzzyPatternMatch(

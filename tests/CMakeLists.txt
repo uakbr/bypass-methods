@@ -24,6 +24,8 @@ endif()
 set(TEST_SOURCES
     test_pattern_scanner.cpp
     test_hooked_functions.cpp
+    test_memory_tracker.cpp
+    test_com_tracker.cpp
 )
 
 # Create test executable
@@ -34,6 +36,7 @@ target_link_libraries(undownunlock_tests PRIVATE
     GTest::gtest
     GTest::gtest_main
     UndownUnlockDXHook
+    dbghelp
 )
 
 # Register tests with CTest
