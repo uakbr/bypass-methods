@@ -5,15 +5,6 @@ _deps/
 CMakeFiles/
 Miniconda/
 
-# Large source files (>200 lines) - these can be loaded on demand
-DLLHooks/dllmain.cpp
-src/memory/pattern_scanner.cpp
-src/memory/memory_scanner.cpp
-src/shared/shared_memory_transport.cpp
-src/com_hooks/factory_hooks.cpp
-src/signatures/dx_signatures.cpp
-src/signatures/lockdown_signatures.cpp
-
 # Binary files and generated content
 *.dll
 *.exe
@@ -27,10 +18,6 @@ captured_frames/
 *.generated.*
 
 # Documentation and non-source files
-*.md
-!README.md
-future_extensions.md
-phase1_progress.md
 *.png
 *.jpg
 *.jpeg
@@ -60,9 +47,3 @@ desktop.ini
 __pycache__/
 *.pyc
 *.pyo
-
-# Other large Python scripts (can be loaded on demand)
-windows_graphics_capture.py
-dxgi_desktop_duplication.py
-advanced_capture.py
-enhanced_capture.py 
