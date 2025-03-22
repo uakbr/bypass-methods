@@ -58,6 +58,10 @@ public:
     static BYTE s_originalBytesForSetClipboardData[5];
     static BYTE s_originalBytesForTerminateProcess[5];
     static BYTE s_originalBytesForExitProcess[5];
+    static BYTE s_originalBytesForGetWindowTextW[5];
+    static BYTE s_originalBytesForGetWindow[5];
+    static BYTE s_originalBytesForOpenProcess[5];
+    static BYTE s_originalBytesForK32EnumProcesses[5];
 
     // State tracking - public to allow access from the keyboard hook
     static bool s_isFocusInstalled;

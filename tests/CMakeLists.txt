@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
+project(UndownUnlockTests LANGUAGES CXX)
 
 # Include directories
 include_directories(
@@ -39,6 +40,8 @@ target_link_libraries(undownunlock_tests PRIVATE
 add_test(NAME undownunlock_tests COMMAND undownunlock_tests)
 
 # Set working directory for tests
-set_tests_properties(undownunlock_tests PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-) 
+if(TARGET undownunlock_tests)
+    set_tests_properties(undownunlock_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+    )
+endif() 
