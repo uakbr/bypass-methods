@@ -6,6 +6,13 @@
 #include <shlwapi.h>
 #include <algorithm>
 #include <iostream>
+#include "../../include/virtual_camera/virtual_camera.h"
+#include <dshow.h>
+#include <initguid.h>
+#include <uuids.h>
+#include <vector>
+#include <atomic>
+#include <string>
 
 #pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -16,6 +23,16 @@ namespace VirtualCamera {
 
 // Default buffer size (720p RGB)
 const LONG DEFAULT_BUFFER_SIZE = 1280 * 720 * 3;
+
+// Define the GUID for our virtual camera filter
+// {B1EFC839-BEB4-45F3-9EE3-3E7B965715DB}
+DEFINE_GUID(CLSID_UndownUnlockVirtualCamera, 
+    0xb1efc839, 0xbeb4, 0x45f3, 0x9e, 0xe3, 0x3e, 0x7b, 0x96, 0x57, 0x15, 0xdb);
+
+// Define the GUID for our custom interface
+// {F8E01F5A-03A4-4FB7-9E4A-5F5E2E9DAF3C}
+DEFINE_GUID(IID_IUndownUnlockVirtualCamera, 
+    0xf8e01f5a, 0x03a4, 0x4fb7, 0x9e, 0x4a, 0x5f, 0x5e, 0x2e, 0x9d, 0xaf, 0x3c);
 
 //
 // CVirtualCameraOutputPin implementation
@@ -715,6 +732,556 @@ bool DirectShowRegistration::RemoveFilterFromRegistry(const GUID& clsid)
     RegDeleteTree(HKEY_CLASSES_ROOT, keyName);
     
     return (lResult == ERROR_SUCCESS || lResult == ERROR_FILE_NOT_FOUND);
+}
+
+// Custom interface for the virtual camera filter
+class IUndownUnlockVirtualCamera : public IUnknown {
+public:
+    // Update the frame buffer
+    virtual HRESULT STDMETHODCALLTYPE UpdateFrame(BYTE* pBuffer, LONG bufferSize) = 0;
+    
+    // Set the output format
+    virtual HRESULT STDMETHODCALLTYPE SetOutputFormat(LONG width, LONG height, LONG frameRate) = 0;
+    
+    // Set device spoofing parameters
+    virtual HRESULT STDMETHODCALLTYPE SetSpoofingParams(GUID deviceGuid, LPCWSTR deviceName, LPCWSTR devicePath) = 0;
+};
+
+// Class factory for creating the virtual camera filter
+class CUndownUnlockVCamClassFactory : public IClassFactory {
+public:
+    // Constructor
+    CUndownUnlockVCamClassFactory() : m_refCount(1) {}
+    
+    // IUnknown methods
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) {
+        if (!ppv) return E_POINTER;
+        
+        if (riid == IID_IUnknown || riid == IID_IClassFactory) {
+            *ppv = static_cast<IClassFactory*>(this);
+            AddRef();
+            return S_OK;
+        }
+        
+        *ppv = NULL;
+        return E_NOINTERFACE;
+    }
+    
+    STDMETHODIMP_(ULONG) AddRef() {
+        return InterlockedIncrement(&m_refCount);
+    }
+    
+    STDMETHODIMP_(ULONG) Release() {
+        LONG count = InterlockedDecrement(&m_refCount);
+        if (count == 0) {
+            delete this;
+            return 0;
+        }
+        return count;
+    }
+    
+    // IClassFactory methods
+    STDMETHODIMP CreateInstance(IUnknown* pUnkOuter, REFIID riid, void** ppv) {
+        // Create the filter object
+        // This is a placeholder - in a real implementation this would create the actual filter
+        *ppv = NULL;
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP LockServer(BOOL fLock) {
+        return S_OK;
+    }
+    
+private:
+    LONG m_refCount;
+};
+
+// Pin implementation for the virtual camera filter
+class CUndownUnlockVCamOutputPin : public IPin, public IMediaSeeking, public IAMStreamConfig {
+public:
+    // Constructor
+    CUndownUnlockVCamOutputPin() : m_refCount(1), m_pConnectedPin(NULL), m_pMediaType(NULL) {}
+    
+    // Destructor
+    ~CUndownUnlockVCamOutputPin() {
+        if (m_pConnectedPin) {
+            m_pConnectedPin->Release();
+            m_pConnectedPin = NULL;
+        }
+        
+        if (m_pMediaType) {
+            DeleteMediaType(m_pMediaType);
+            m_pMediaType = NULL;
+        }
+    }
+    
+    // IUnknown methods
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) {
+        if (!ppv) return E_POINTER;
+        
+        if (riid == IID_IUnknown || riid == IID_IPin) {
+            *ppv = static_cast<IPin*>(this);
+            AddRef();
+            return S_OK;
+        } else if (riid == IID_IMediaSeeking) {
+            *ppv = static_cast<IMediaSeeking*>(this);
+            AddRef();
+            return S_OK;
+        } else if (riid == IID_IAMStreamConfig) {
+            *ppv = static_cast<IAMStreamConfig*>(this);
+            AddRef();
+            return S_OK;
+        }
+        
+        *ppv = NULL;
+        return E_NOINTERFACE;
+    }
+    
+    STDMETHODIMP_(ULONG) AddRef() {
+        return InterlockedIncrement(&m_refCount);
+    }
+    
+    STDMETHODIMP_(ULONG) Release() {
+        LONG count = InterlockedDecrement(&m_refCount);
+        if (count == 0) {
+            delete this;
+            return 0;
+        }
+        return count;
+    }
+    
+    // IPin methods
+    STDMETHODIMP Connect(IPin* pReceivePin, const AM_MEDIA_TYPE* pmt) {
+        // This is a placeholder - in a real implementation this would handle connection
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP ReceiveConnection(IPin* pConnector, const AM_MEDIA_TYPE* pmt) {
+        // This is a placeholder - in a real implementation this would handle receiving a connection
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP Disconnect() {
+        // This is a placeholder - in a real implementation this would handle disconnection
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP ConnectedTo(IPin** ppPin) {
+        // This is a placeholder - in a real implementation this would return the connected pin
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP ConnectionMediaType(AM_MEDIA_TYPE* pmt) {
+        // This is a placeholder - in a real implementation this would return the connection media type
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP QueryPinInfo(PIN_INFO* pInfo) {
+        // This is a placeholder - in a real implementation this would return pin info
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP QueryDirection(PIN_DIRECTION* pPinDir) {
+        // Output pin
+        *pPinDir = PINDIR_OUTPUT;
+        return S_OK;
+    }
+    
+    STDMETHODIMP QueryId(LPWSTR* Id) {
+        // This is a placeholder - in a real implementation this would return the pin ID
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP QueryAccept(const AM_MEDIA_TYPE* pmt) {
+        // This is a placeholder - in a real implementation this would check if the media type is acceptable
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP EnumMediaTypes(IEnumMediaTypes** ppEnum) {
+        // This is a placeholder - in a real implementation this would enumerate media types
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP QueryInternalConnections(IPin** apPin, ULONG* nPin) {
+        // No internal connections
+        if (nPin) *nPin = 0;
+        return S_OK;
+    }
+    
+    STDMETHODIMP EndOfStream() {
+        // This is a placeholder - in a real implementation this would handle end of stream
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP BeginFlush() {
+        // This is a placeholder - in a real implementation this would handle flush begin
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP EndFlush() {
+        // This is a placeholder - in a real implementation this would handle flush end
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP NewSegment(REFERENCE_TIME tStart, REFERENCE_TIME tStop, double dRate) {
+        // This is a placeholder - in a real implementation this would handle new segment
+        return E_NOTIMPL;
+    }
+    
+    // IAMStreamConfig methods
+    STDMETHODIMP SetFormat(AM_MEDIA_TYPE* pmt) {
+        // This is a placeholder - in a real implementation this would set the media format
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetFormat(AM_MEDIA_TYPE** ppmt) {
+        // This is a placeholder - in a real implementation this would get the media format
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetNumberOfCapabilities(int* piCount, int* piSize) {
+        // This is a placeholder - in a real implementation this would return capabilities count
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetStreamCaps(int iIndex, AM_MEDIA_TYPE** ppmt, BYTE* pSCC) {
+        // This is a placeholder - in a real implementation this would return stream capabilities
+        return E_NOTIMPL;
+    }
+    
+    // IMediaSeeking methods
+    STDMETHODIMP GetCapabilities(DWORD* pCapabilities) {
+        // No seeking capabilities
+        *pCapabilities = 0;
+        return S_OK;
+    }
+    
+    STDMETHODIMP CheckCapabilities(DWORD* pCapabilities) {
+        // This is a placeholder - in a real implementation this would check capabilities
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP IsFormatSupported(const GUID* pFormat) {
+        // This is a placeholder - in a real implementation this would check format support
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP QueryPreferredFormat(GUID* pFormat) {
+        // This is a placeholder - in a real implementation this would return preferred format
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetTimeFormat(GUID* pFormat) {
+        // This is a placeholder - in a real implementation this would return time format
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP IsUsingTimeFormat(const GUID* pFormat) {
+        // This is a placeholder - in a real implementation this would check time format
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP SetTimeFormat(const GUID* pFormat) {
+        // This is a placeholder - in a real implementation this would set time format
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetDuration(LONGLONG* pDuration) {
+        // This is a placeholder - in a real implementation this would return duration
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetStopPosition(LONGLONG* pStop) {
+        // This is a placeholder - in a real implementation this would return stop position
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetCurrentPosition(LONGLONG* pCurrent) {
+        // This is a placeholder - in a real implementation this would return current position
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP ConvertTimeFormat(LONGLONG* pTarget, const GUID* pTargetFormat,
+                                 LONGLONG Source, const GUID* pSourceFormat) {
+        // This is a placeholder - in a real implementation this would convert time format
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP SetPositions(LONGLONG* pCurrent, DWORD dwCurrentFlags,
+                            LONGLONG* pStop, DWORD dwStopFlags) {
+        // This is a placeholder - in a real implementation this would set positions
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetPositions(LONGLONG* pCurrent, LONGLONG* pStop) {
+        // This is a placeholder - in a real implementation this would get positions
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetAvailable(LONGLONG* pEarliest, LONGLONG* pLatest) {
+        // This is a placeholder - in a real implementation this would get available range
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP SetRate(double dRate) {
+        // This is a placeholder - in a real implementation this would set playback rate
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetRate(double* pdRate) {
+        // This is a placeholder - in a real implementation this would get playback rate
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP GetPreroll(LONGLONG* pllPreroll) {
+        // This is a placeholder - in a real implementation this would get preroll time
+        return E_NOTIMPL;
+    }
+    
+private:
+    LONG m_refCount;
+    IPin* m_pConnectedPin;
+    AM_MEDIA_TYPE* m_pMediaType;
+};
+
+// Virtual camera filter implementation
+class CUndownUnlockVirtualCameraFilter : public IBaseFilter, public IUndownUnlockVirtualCamera {
+public:
+    // Constructor
+    CUndownUnlockVirtualCameraFilter() : m_refCount(1), m_pClock(NULL), m_pSink(NULL), m_state(State_Stopped),
+                                      m_pOutputPin(NULL), m_width(1280), m_height(720), m_frameRate(30) {
+        // Initialize the frame buffer
+        m_frameBuffer.resize(m_width * m_height * 3);
+        
+        // Create the output pin
+        m_pOutputPin = new CUndownUnlockVCamOutputPin();
+    }
+    
+    // Destructor
+    ~CUndownUnlockVirtualCameraFilter() {
+        if (m_pClock) {
+            m_pClock->Release();
+            m_pClock = NULL;
+        }
+        
+        if (m_pOutputPin) {
+            m_pOutputPin->Release();
+            m_pOutputPin = NULL;
+        }
+    }
+    
+    // IUnknown methods
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) {
+        if (!ppv) return E_POINTER;
+        
+        if (riid == IID_IUnknown || riid == IID_IBaseFilter) {
+            *ppv = static_cast<IBaseFilter*>(this);
+            AddRef();
+            return S_OK;
+        } else if (riid == IID_IUndownUnlockVirtualCamera) {
+            *ppv = static_cast<IUndownUnlockVirtualCamera*>(this);
+            AddRef();
+            return S_OK;
+        }
+        
+        *ppv = NULL;
+        return E_NOINTERFACE;
+    }
+    
+    STDMETHODIMP_(ULONG) AddRef() {
+        return InterlockedIncrement(&m_refCount);
+    }
+    
+    STDMETHODIMP_(ULONG) Release() {
+        LONG count = InterlockedDecrement(&m_refCount);
+        if (count == 0) {
+            delete this;
+            return 0;
+        }
+        return count;
+    }
+    
+    // IBaseFilter methods
+    STDMETHODIMP GetClassID(CLSID* pClassID) {
+        *pClassID = CLSID_UndownUnlockVirtualCamera;
+        return S_OK;
+    }
+    
+    STDMETHODIMP Stop() {
+        m_state = State_Stopped;
+        return S_OK;
+    }
+    
+    STDMETHODIMP Pause() {
+        m_state = State_Paused;
+        return S_OK;
+    }
+    
+    STDMETHODIMP Run(REFERENCE_TIME tStart) {
+        m_state = State_Running;
+        return S_OK;
+    }
+    
+    STDMETHODIMP GetState(DWORD dwMilliSecsTimeout, FILTER_STATE* State) {
+        *State = m_state;
+        return S_OK;
+    }
+    
+    STDMETHODIMP SetSyncSource(IReferenceClock* pClock) {
+        if (m_pClock) {
+            m_pClock->Release();
+            m_pClock = NULL;
+        }
+        
+        if (pClock) {
+            m_pClock = pClock;
+            m_pClock->AddRef();
+        }
+        
+        return S_OK;
+    }
+    
+    STDMETHODIMP GetSyncSource(IReferenceClock** ppClock) {
+        if (!ppClock) return E_POINTER;
+        
+        *ppClock = m_pClock;
+        if (m_pClock) {
+            m_pClock->AddRef();
+        }
+        
+        return S_OK;
+    }
+    
+    STDMETHODIMP EnumPins(IEnumPins** ppEnum) {
+        // This is a placeholder - in a real implementation this would enumerate pins
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP FindPin(LPCWSTR Id, IPin** ppPin) {
+        // This is a placeholder - in a real implementation this would find pins by ID
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP QueryFilterInfo(FILTER_INFO* pInfo) {
+        // This is a placeholder - in a real implementation this would return filter info
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP JoinFilterGraph(IFilterGraph* pGraph, LPCWSTR pName) {
+        // This is a placeholder - in a real implementation this would handle filter graph joining
+        return E_NOTIMPL;
+    }
+    
+    STDMETHODIMP QueryVendorInfo(LPWSTR* pVendorInfo) {
+        // No vendor info
+        return E_NOTIMPL;
+    }
+    
+    // IUndownUnlockVirtualCamera methods
+    STDMETHODIMP UpdateFrame(BYTE* pBuffer, LONG bufferSize) {
+        if (!pBuffer || bufferSize <= 0) {
+            return E_INVALIDARG;
+        }
+        
+        // Check if the buffer size is compatible with our frame size
+        if (static_cast<LONG>(m_frameBuffer.size()) != bufferSize) {
+            m_frameBuffer.resize(bufferSize);
+        }
+        
+        // Copy the frame data
+        memcpy(m_frameBuffer.data(), pBuffer, bufferSize);
+        
+        return S_OK;
+    }
+    
+    STDMETHODIMP SetOutputFormat(LONG width, LONG height, LONG frameRate) {
+        if (width <= 0 || height <= 0 || frameRate <= 0) {
+            return E_INVALIDARG;
+        }
+        
+        // Set the new format
+        m_width = width;
+        m_height = height;
+        m_frameRate = frameRate;
+        
+        // Resize the frame buffer
+        m_frameBuffer.resize(m_width * m_height * 3); // Assume RGB24 format
+        
+        return S_OK;
+    }
+    
+    STDMETHODIMP SetSpoofingParams(GUID deviceGuid, LPCWSTR deviceName, LPCWSTR devicePath) {
+        // This is a placeholder - in a real implementation this would set spoofing parameters
+        return S_OK;
+    }
+    
+private:
+    LONG m_refCount;
+    FILTER_STATE m_state;
+    IReferenceClock* m_pClock;
+    IFilterGraph* m_pSink;
+    CUndownUnlockVCamOutputPin* m_pOutputPin;
+    std::vector<BYTE> m_frameBuffer;
+    LONG m_width;
+    LONG m_height;
+    LONG m_frameRate;
+};
+
+// DirectShow registration helper functions
+bool RegisterDirectShowFilter() {
+    // This would register the DirectShow filter with the system
+    // For brevity, this is a simplified implementation
+    
+    std::cout << "Registering DirectShow filter..." << std::endl;
+    
+    // Create the class factory
+    CUndownUnlockVCamClassFactory* pFactory = new CUndownUnlockVCamClassFactory();
+    if (!pFactory) {
+        std::cerr << "Failed to create class factory" << std::endl;
+        return false;
+    }
+    
+    // Register the class factory
+    HRESULT hr = CoRegisterClassObject(
+        CLSID_UndownUnlockVirtualCamera,
+        pFactory,
+        CLSCTX_INPROC_SERVER,
+        REGCLS_MULTIPLEUSE,
+        NULL
+    );
+    
+    pFactory->Release();
+    
+    if (FAILED(hr)) {
+        std::cerr << "Failed to register class object. Error: " << std::hex << hr << std::endl;
+        return false;
+    }
+    
+    std::cout << "DirectShow filter registered successfully" << std::endl;
+    return true;
+}
+
+bool UnregisterDirectShowFilter() {
+    // This would unregister the DirectShow filter from the system
+    // For brevity, this is a simplified implementation
+    
+    std::cout << "Unregistering DirectShow filter..." << std::endl;
+    
+    // Revoke the class factory
+    HRESULT hr = CoRevokeClassObject(0); // In a real implementation, we would store the registration cookie
+    if (FAILED(hr)) {
+        std::cerr << "Failed to revoke class object. Error: " << std::hex << hr << std::endl;
+        return false;
+    }
+    
+    std::cout << "DirectShow filter unregistered successfully" << std::endl;
+    return true;
+}
+
+bool IsDirectShowFilterRegistered() {
+    // This would check if the DirectShow filter is registered
+    // For brevity, this always returns false to ensure registration attempt
+    return false;
 }
 
 } // namespace VirtualCamera

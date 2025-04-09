@@ -94,6 +94,19 @@ set(TEST_CLIENT_SOURCES
     src/test_client.cpp
 )
 
+# Define source files for the virtual camera library
+set(VIRTUAL_CAMERA_SOURCES
+    src/virtual_camera/kernel_driver.cpp
+    src/virtual_camera/virtual_camera.cpp
+    src/virtual_camera/directshow_filter.cpp
+    src/virtual_camera/facial_tracking.cpp
+)
+
+# Define source files for the virtual camera test
+set(VCAM_TEST_SOURCES
+    src/tests/test_virtual_camera.cpp
+)
+
 # Add the DLL hooks library
 add_library(UndownUnlockDXHook SHARED ${DLL_HOOKS_SOURCES})
 
@@ -106,6 +119,12 @@ target_compile_definitions(UndownUnlockDXHook PRIVATE
 
 # Add the test client executable
 add_executable(UndownUnlockTestClient ${TEST_CLIENT_SOURCES})
+
+# Add the virtual camera library
+add_library(UndownUnlockVirtualCamera STATIC ${VIRTUAL_CAMERA_SOURCES})
+
+# Add the virtual camera test application
+add_executable(UndownUnlockVCamTest ${VCAM_TEST_SOURCES})
 
 # Link the test client with necessary libraries
 target_link_libraries(UndownUnlockTestClient PRIVATE
@@ -124,6 +143,23 @@ target_link_libraries(UndownUnlockDXHook PRIVATE
     ${COMPRESSION_LIBS}
 )
 
+# Link the virtual camera library with necessary libraries
+target_link_libraries(UndownUnlockVirtualCamera PRIVATE
+    setupapi
+    strmiids
+    mfplat
+    mf
+    mfreadwrite
+    mfuuid
+    shlwapi
+    advapi32
+)
+
+# Link the virtual camera test application
+target_link_libraries(UndownUnlockVCamTest PRIVATE
+    UndownUnlockVirtualCamera
+)
+
 # Conditionally link LZ4 and ZSTD using find_package results
 if(USE_LZ4 AND lz4_FOUND)
     target_link_libraries(UndownUnlockDXHook PRIVATE lz4::lz4)
@@ -135,12 +171,33 @@ if(USE_ZSTD AND zstd_FOUND)
     target_link_libraries(UndownUnlockTestClient PRIVATE zstd::libzstd_shared)
 endif()
 
+# Embed the kernel driver binary as a resource
+# This would normally include the real driver binary in the resources
+if(WIN32)
+    # Create a resource file
+    file(WRITE ${CMAKE_BINARY_DIR}/vcam_driver.rc "UNDOWNUNLOCK_VCAM_DRIVER RCDATA \"${CMAKE_SOURCE_DIR}/src/virtual_camera/kernel_driver_source.c\"")
+    
+    # Add the resource file to the virtual camera library
+    add_custom_command(
+        OUTPUT ${CMAKE_BINARY_DIR}/vcam_driver.res
+        COMMAND rc.exe /fo ${CMAKE_BINARY_DIR}/vcam_driver.res ${CMAKE_BINARY_DIR}/vcam_driver.rc
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/virtual_camera/kernel_driver_source.c
+        COMMENT "Compiling virtual camera driver resource"
+    )
+    
+    # Add the resource to the virtual camera library
+    target_sources(UndownUnlockVirtualCamera PRIVATE ${CMAKE_BINARY_DIR}/vcam_driver.res)
+endif()
+
 # Installation rules
-install(TARGETS UndownUnlockDXHook UndownUnlockTestClient
+install(TARGETS UndownUnlockDXHook UndownUnlockTestClient UndownUnlockVirtualCamera UndownUnlockVCamTest
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )
+
+# Create a bin directory for drivers
+install(DIRECTORY DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/bin)
 
 # Copy the Python injector script to the output directory
 configure_file(
@@ -154,6 +211,12 @@ option(BUILD_TESTING "Build tests" ON)
 if(BUILD_TESTING)
     enable_testing()
     add_subdirectory(tests)
+    
+    # Add the virtual camera test to the tests
+    add_test(
+        NAME VirtualCameraTest
+        COMMAND UndownUnlockVCamTest
+    )
 endif()
 
 # Print configuration summary

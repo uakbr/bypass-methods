@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include "kernel_driver_ioctl.h"
 
 namespace UndownUnlock {
 namespace VirtualCamera {
@@ -17,6 +18,10 @@ struct KernelDriverConfig {
     std::wstring driverPath = L""; // Path to the driver file (set at runtime)
     bool registerAsTrusted = true; // Whether to register as a trusted driver
     bool bypassSecurityChecks = true; // Whether to bypass security checks
+    bool allowDriverPatching = false; // Whether to allow patching the driver file
+    bool allowAdvancedBypass = false; // Whether to allow advanced bypass methods
+    bool cleanupOnShutdown = true; // Whether to clean up on shutdown
+    bool cleanupOnUninstall = true; // Whether to clean up on uninstall
     int deviceId = 1; // Device identifier
 };
 
@@ -95,6 +100,34 @@ public:
      * @return True if successful
      */
     static bool BypassDriverSigning();
+    
+    /**
+     * @brief Spoof device signature to make it appear as a legitimate webcam
+     * @return True if successful
+     */
+    static bool SpoofDeviceSignature();
+    
+    /**
+     * @brief Set video format for the virtual camera
+     * @param width Width of the video frame
+     * @param height Height of the video frame
+     * @param format Pixel format of the video
+     * @param frameRate Frame rate of the video
+     * @return True if successful
+     */
+    static bool SetVideoFormat(int width, int height, PixelFormat format, int frameRate);
+    
+    /**
+     * @brief Get supported video formats
+     * @return Vector of supported video formats
+     */
+    static std::vector<VideoFormatDescriptor> GetSupportedFormats();
+    
+    /**
+     * @brief Get current device status
+     * @return Current status of the device
+     */
+    static DeviceStatus GetDeviceStatus();
 
 private:
     // Private implementation details
@@ -108,12 +141,23 @@ private:
     static bool ExtractDriverFile();
     static bool RegisterDriverService();
     static bool SetDriverRegistryKeys();
+    static bool SetupFakeDeviceRegistry();
+    static void RemoveDeviceRegistryEntries();
     static bool OpenDeviceHandle();
+    static bool TryAlternativeDeviceOpen();
     static bool SendIOControlToDriver(DWORD ioctl, const void* inBuffer, DWORD inBufferSize, 
                                       void* outBuffer, DWORD outBufferSize, DWORD* bytesReturned);
+    static bool IsTestSigningEnabled();
+    static bool AreIntegrityChecksDisabled();
     static bool EnableTestSigning();
-    static bool AddDriverToCertStore();
     static bool DisableIntegrityChecks();
+    static bool AddDriverToCertStore();
+    static bool SpoofDriverCertificate();
+    static bool PatchDriverWithFakeSignature();
+    static bool ApplyEmergencySignatureBypass();
+    static bool ForceDeleteService();
+    static bool ForceStopService();
+    static bool ElevatePrivileges();
 };
 
 // IOCTL codes for driver communication

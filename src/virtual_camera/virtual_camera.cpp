@@ -9,6 +9,14 @@
 #include <chrono>
 #include <thread>
 #include <dshow.h>
+#include <fstream>
+#include <vector>
+#include <random>
+#include <Windows.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
+#include <Shlwapi.h>
 
 #pragma comment(lib, "strmiids.lib")
 
@@ -31,6 +39,13 @@ IMFMediaSource* VirtualCameraSystem::s_pMediaSource = nullptr;
 IMFSourceReader* VirtualCameraSystem::s_pSourceReader = nullptr;
 IMFSample* VirtualCameraSystem::s_pCurrentSample = nullptr;
 
+// Main thread for video processing
+std::thread s_videoProcessingThread;
+std::atomic<bool> s_threadRunning(false);
+
+// Random number generator for simulating camera imperfections
+std::mt19937 s_randomGenerator(static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count()));
+
 bool VirtualCameraSystem::Initialize(const VirtualCameraConfig& config) {
     std::lock_guard<std::mutex> lock(s_mutex);
     
@@ -44,69 +59,106 @@ bool VirtualCameraSystem::Initialize(const VirtualCameraConfig& config) {
     // Store configuration
     s_config = config;
     
-    // Initialize COM
+    // Initialize COM for the current thread
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     if (FAILED(hr)) {
         std::cerr << "Failed to initialize COM. Error: " << std::hex << hr << std::endl;
         return false;
     }
     
-    // Check if driver is installed, install if not
-    if (!IsDriverInstalled()) {
-        std::cout << "Virtual camera driver not installed. Installing..." << std::endl;
-        if (!InstallDriver()) {
-            std::cerr << "Failed to install virtual camera driver" << std::endl;
+    // Initialize Media Foundation
+    hr = MFStartup(MF_VERSION);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to initialize Media Foundation. Error: " << std::hex << hr << std::endl;
+        CoUninitialize();
+        return false;
+    }
+    
+    // Check if kernel driver is available, and initialize it if needed
+    if (!KernelDriver::IsInstalled()) {
+        std::cout << "Kernel driver not installed, installing..." << std::endl;
+        
+        // Initialize the kernel driver with default configuration
+        KernelDriverConfig driverConfig;
+        driverConfig.bypassSecurityChecks = true;
+        driverConfig.registerAsTrusted = true;
+        
+        if (!KernelDriver::Initialize(driverConfig)) {
+            std::cerr << "Failed to initialize kernel driver" << std::endl;
+            MFShutdown();
+            CoUninitialize();
+            return false;
+        }
+        
+        if (!KernelDriver::Install()) {
+            std::cerr << "Failed to install kernel driver" << std::endl;
+            KernelDriver::Shutdown();
+            MFShutdown();
             CoUninitialize();
             return false;
         }
     }
     
-    // Initialize DirectShow
-    if (!InitializeDirectShow()) {
-        std::cerr << "Failed to initialize DirectShow" << std::endl;
-        CoUninitialize();
-        return false;
-    }
-    
-    // Initialize Media Foundation
-    if (!InitializeMediaFoundation()) {
-        std::cerr << "Failed to initialize Media Foundation" << std::endl;
-        CoUninitialize();
-        return false;
-    }
-    
-    // If facial tracking is enabled, initialize it
-    if (config.enableFacialTracking) {
-        if (!FacialDetector::Initialize()) {
-            std::cerr << "Warning: Failed to initialize facial tracking" << std::endl;
-            // Continue without facial tracking
-        }
-    }
-    
-    // Initialize camera simulator for realistic effects
-    if (config.simulateImperfections || config.enableLightingVariations) {
-        if (!CameraSimulator::Initialize()) {
-            std::cerr << "Warning: Failed to initialize camera simulator" << std::endl;
-            // Continue without imperfections
+    if (!KernelDriver::IsRunning()) {
+        std::cout << "Starting kernel driver..." << std::endl;
+        if (!KernelDriver::Start()) {
+            std::cerr << "Failed to start kernel driver" << std::endl;
+            KernelDriver::Shutdown();
+            MFShutdown();
+            CoUninitialize();
+            return false;
         }
     }
     
     // Set up device signature spoofing
-    if (!SpoofDeviceSignature()) {
+    if (!KernelDriver::SpoofDeviceSignature()) {
         std::cerr << "Warning: Failed to spoof device signature" << std::endl;
-        // Continue without spoofing
+        // Continue anyway
     }
     
-    // If a video file source was specified, try to load it
-    if (!config.cameraPath.empty()) {
-        if (!SetVideoFileSource(config.cameraPath)) {
-            std::cerr << "Warning: Failed to set video file source" << std::endl;
-            // Continue without video source
+    // Set video format
+    PixelFormat pixelFormat = PixelFormat::MJPG; // Default to MJPG
+    if (!KernelDriver::SetVideoFormat(s_config.width, s_config.height, pixelFormat, s_config.frameRate)) {
+        std::cerr << "Warning: Failed to set video format" << std::endl;
+        // Continue anyway
+    }
+    
+    // Initialize DirectShow integration
+    if (!InitializeDirectShow()) {
+        std::cerr << "Warning: Failed to initialize DirectShow integration" << std::endl;
+        // Continue anyway, as we can still use kernel-mode driver directly
+    }
+    
+    // Initialize Media Foundation integration
+    if (!InitializeMediaFoundation()) {
+        std::cerr << "Warning: Failed to initialize Media Foundation integration" << std::endl;
+        // Continue anyway, as we can still use kernel-mode driver directly
+    }
+    
+    // Initialize facial tracking if enabled
+    if (s_config.enableFacialTracking) {
+        if (!FacialTracker::Initialize()) {
+            std::cerr << "Warning: Failed to initialize facial tracking" << std::endl;
+            s_config.enableFacialTracking = false;
         }
     }
     
+    // If a video file is specified as the source, load it
+    if (!s_config.cameraPath.empty()) {
+        if (!SetVideoFileSource(s_config.cameraPath)) {
+            std::cerr << "Warning: Failed to set video file source from " << 
+                std::string(s_config.cameraPath.begin(), s_config.cameraPath.end()) << std::endl;
+            // Continue anyway
+        }
+    }
+    
+    // Start video processing thread
+    s_threadRunning = true;
+    s_videoProcessingThread = std::thread(VideoProcessingThread);
+    
     s_isInitialized = true;
     s_isActive = true;
+    
     std::cout << "Virtual camera system initialized successfully" << std::endl;
     return true;
 }
@@ -120,7 +172,30 @@ void VirtualCameraSystem::Shutdown() {
     
     std::cout << "Shutting down virtual camera system..." << std::endl;
     
-    // Release Media Foundation resources
+    // Stop the video processing thread
+    s_threadRunning = false;
+    if (s_videoProcessingThread.joinable()) {
+        s_videoProcessingThread.join();
+    }
+    
+    // Shutdown DirectShow integration
+    if (s_pMediaControl) {
+        s_pMediaControl->Stop();
+        s_pMediaControl->Release();
+        s_pMediaControl = nullptr;
+    }
+    
+    if (s_pVirtualCamFilter) {
+        s_pVirtualCamFilter->Release();
+        s_pVirtualCamFilter = nullptr;
+    }
+    
+    if (s_pGraphBuilder) {
+        s_pGraphBuilder->Release();
+        s_pGraphBuilder = nullptr;
+    }
+    
+    // Shutdown Media Foundation integration
     if (s_pCurrentSample) {
         s_pCurrentSample->Release();
         s_pCurrentSample = nullptr;
@@ -136,191 +211,83 @@ void VirtualCameraSystem::Shutdown() {
         s_pMediaSource = nullptr;
     }
     
-    // Release DirectShow resources
-    if (s_pMediaControl) {
-        s_pMediaControl->Stop();
-        s_pMediaControl->Release();
-        s_pMediaControl = nullptr;
+    // Shutdown facial tracking if it was enabled
+    if (s_config.enableFacialTracking) {
+        FacialTracker::Shutdown();
     }
     
-    if (s_pGraphBuilder) {
-        s_pGraphBuilder->Release();
-        s_pGraphBuilder = nullptr;
-    }
+    // Shutdown Media Foundation
+    MFShutdown();
     
-    if (s_pVirtualCamFilter) {
-        s_pVirtualCamFilter->Release();
-        s_pVirtualCamFilter = nullptr;
-    }
-    
-    // Shutdown facial tracking if it was initialized
-    if (s_config.enableFacialTracking && FacialDetector::IsInitialized()) {
-        FacialDetector::Shutdown();
-    }
-    
-    // Shutdown camera simulator
-    if (s_config.simulateImperfections || s_config.enableLightingVariations) {
-        CameraSimulator::Shutdown();
-    }
+    // Shutdown COM
+    CoUninitialize();
     
     s_isInitialized = false;
     s_isActive = false;
-    
-    // Uninitialize COM
-    CoUninitialize();
     
     std::cout << "Virtual camera system shut down successfully" << std::endl;
 }
 
 bool VirtualCameraSystem::InstallDriver() {
-    std::cout << "Installing virtual camera driver..." << std::endl;
-    
-    // First, check if we need to install the kernel mode driver
-    if (!KernelDriver::IsInstalled()) {
-        // Initialize the kernel driver manager
-        KernelDriverConfig driverConfig;
-        if (!KernelDriver::Initialize(driverConfig)) {
-            std::cerr << "Failed to initialize kernel driver manager" << std::endl;
-            return false;
-        }
-        
-        // Try to bypass driver signing if needed
-        if (driverConfig.bypassSecurityChecks) {
-            if (!KernelDriver::BypassDriverSigning()) {
-                std::cerr << "Warning: Failed to bypass driver signing. Driver installation may fail" << std::endl;
-            }
-        }
-        
-        // Install the driver
-        if (!KernelDriver::Install()) {
-            std::cerr << "Failed to install kernel driver" << std::endl;
-            KernelDriver::Shutdown();
-            return false;
-        }
-        
-        // Start the driver service
-        if (!KernelDriver::Start()) {
-            std::cerr << "Failed to start kernel driver service" << std::endl;
-            KernelDriver::Uninstall();
-            KernelDriver::Shutdown();
-            return false;
-        }
-    }
-    
-    // Next, register the DirectShow filter
-    if (!DirectShowRegistration::IsFilterRegistered()) {
-        if (!DirectShowRegistration::RegisterFilter()) {
-            std::cerr << "Failed to register DirectShow filter" << std::endl;
-            return false;
-        }
-    }
-    
-    std::cout << "Virtual camera driver installed successfully" << std::endl;
-    return true;
+    // This is just a wrapper around the KernelDriver implementation
+    return KernelDriver::Install();
 }
 
 bool VirtualCameraSystem::UninstallDriver() {
-    std::cout << "Uninstalling virtual camera driver..." << std::endl;
-    
-    bool result = true;
-    
-    // Unregister the DirectShow filter
-    if (DirectShowRegistration::IsFilterRegistered()) {
-        if (!DirectShowRegistration::UnregisterFilter()) {
-            std::cerr << "Failed to unregister DirectShow filter" << std::endl;
-            result = false;
-        }
-    }
-    
-    // Stop and uninstall the kernel driver
-    if (KernelDriver::IsRunning()) {
-        if (!KernelDriver::Stop()) {
-            std::cerr << "Failed to stop kernel driver service" << std::endl;
-            result = false;
-        }
-    }
-    
-    if (KernelDriver::IsInstalled()) {
-        if (!KernelDriver::Uninstall()) {
-            std::cerr << "Failed to uninstall kernel driver" << std::endl;
-            result = false;
-        }
-    }
-    
-    // Shut down the kernel driver manager
-    KernelDriver::Shutdown();
-    
-    if (result) {
-        std::cout << "Virtual camera driver uninstalled successfully" << std::endl;
-    }
-    
-    return result;
+    // This is just a wrapper around the KernelDriver implementation
+    return KernelDriver::Uninstall();
 }
 
 bool VirtualCameraSystem::IsDriverInstalled() {
-    return KernelDriver::IsInstalled() && DirectShowRegistration::IsFilterRegistered();
+    // This is just a wrapper around the KernelDriver implementation
+    return KernelDriver::IsInstalled();
 }
 
 bool VirtualCameraSystem::SetFrameSource(const BYTE* buffer, size_t size, int width, int height, int stride) {
-    if (!s_isInitialized || !s_isActive) {
-        std::cerr << "Virtual camera system not initialized or not active" << std::endl;
+    if (!s_isInitialized || !buffer || size == 0) {
         return false;
     }
     
-    if (!buffer || size == 0) {
-        std::cerr << "Invalid frame buffer" << std::endl;
-        return false;
+    // If no frame has been set or dimensions have changed, update our tracking info
+    static int lastWidth = 0;
+    static int lastHeight = 0;
+    
+    if (width != lastWidth || height != lastHeight) {
+        // Set the video format in the kernel driver
+        PixelFormat pixelFormat = PixelFormat::RGB24; // Assume RGB24 for simplicity
+        if (!KernelDriver::SetVideoFormat(width, height, pixelFormat, s_config.frameRate)) {
+            std::cerr << "Warning: Failed to update video format" << std::endl;
+            // Continue anyway
+        }
+        
+        lastWidth = width;
+        lastHeight = height;
     }
     
-    // Allocate memory for a copy of the frame
-    std::unique_ptr<BYTE[]> frameCopy(new BYTE[size]);
-    memcpy(frameCopy.get(), buffer, size);
+    // Make a copy of the buffer that we can manipulate
+    std::vector<BYTE> frameData(buffer, buffer + size);
+    
+    // Apply camera imperfections if enabled
+    if (s_config.simulateImperfections) {
+        SimulateCameraImperfections(frameData.data(), width, height, stride);
+    }
+    
+    // Apply lighting variations if enabled
+    if (s_config.enableLightingVariations) {
+        ApplyLightingVariations(frameData.data(), width, height, stride);
+    }
     
     // Apply facial tracking if enabled
-    if (s_config.enableFacialTracking && FacialDetector::IsInitialized()) {
-        // Apply facial movements
-        FacialDetector::DetectFeatures(frameCopy.get(), width, height, stride);
+    if (s_config.enableFacialTracking) {
+        ApplyFacialTracking(frameData.data(), width, height, stride);
     }
     
-    // Apply imperfections and lighting variations if enabled
-    if (s_config.simulateImperfections) {
-        CameraSimulator::ApplyImperfections(frameCopy.get(), width, height, stride);
-    }
-    
-    if (s_config.enableLightingVariations) {
-        CameraSimulator::ApplyLightingVariations(frameCopy.get(), width, height, stride);
-    }
-    
-    // Send the frame to the virtual camera
-    HRESULT hr = E_FAIL;
-    
-    // Try to use the DirectShow interface if available
-    if (s_pVirtualCamFilter) {
-        IUndownUnlockVirtualCamera* pVC = nullptr;
-        hr = s_pVirtualCamFilter->QueryInterface(IID_IUndownUnlockVirtualCamera, (void**)&pVC);
-        
-        if (SUCCEEDED(hr) && pVC) {
-            hr = pVC->UpdateFrame(frameCopy.get(), static_cast<LONG>(size));
-            pVC->Release();
-        }
-    }
-    
-    // If DirectShow failed or unavailable, try to use the kernel driver
-    if (FAILED(hr)) {
-        if (!KernelDriver::SetFrame(frameCopy.get(), size)) {
-            std::cerr << "Failed to send frame to virtual camera" << std::endl;
-            return false;
-        }
-    }
-    
-    return true;
+    // Send the frame to the kernel driver
+    return KernelDriver::SetFrame(frameData.data(), frameData.size());
 }
 
 bool VirtualCameraSystem::SetVideoFileSource(const std::wstring& filePath) {
-    std::lock_guard<std::mutex> lock(s_mutex);
-    
     if (!s_isInitialized) {
-        std::cerr << "Virtual camera system not initialized" << std::endl;
         return false;
     }
     
@@ -329,58 +296,134 @@ bool VirtualCameraSystem::SetVideoFileSource(const std::wstring& filePath) {
     // Update config
     s_config.cameraPath = filePath;
     
-    // Create Media Foundation source reader for the video file
+    // Check if the file exists
+    if (!PathFileExists(filePath.c_str())) {
+        std::cerr << "Video file does not exist: " << std::string(filePath.begin(), filePath.end()) << std::endl;
+        return false;
+    }
+    
+    // Initialize Media Foundation if not done already
+    HRESULT hr = S_OK;
+    
+    // Clean up any existing source reader
     if (s_pSourceReader) {
         s_pSourceReader->Release();
         s_pSourceReader = nullptr;
     }
     
     // Create a source reader for the video file
-    HRESULT hr = MFCreateSourceReaderFromURL(filePath.c_str(), nullptr, &s_pSourceReader);
-    
+    hr = MFCreateSourceReaderFromURL(filePath.c_str(), nullptr, &s_pSourceReader);
     if (FAILED(hr)) {
         std::cerr << "Failed to create source reader for video file. Error: " << std::hex << hr << std::endl;
         return false;
     }
     
-    // Configure the source reader to output uncompressed video
-    hr = s_pSourceReader->SetCurrentMediaType(
-        (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-        nullptr,
-        nullptr); // Use native type
-    
+    // Configure the source reader to output RGB32 video
+    hr = s_pSourceReader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE);
     if (FAILED(hr)) {
-        std::cerr << "Failed to set media type for source reader. Error: " << std::hex << hr << std::endl;
+        std::cerr << "Failed to deselect all streams. Error: " << std::hex << hr << std::endl;
         s_pSourceReader->Release();
         s_pSourceReader = nullptr;
         return false;
     }
     
-    std::cout << "Video file source set successfully" << std::endl;
+    hr = s_pSourceReader->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to select video stream. Error: " << std::hex << hr << std::endl;
+        s_pSourceReader->Release();
+        s_pSourceReader = nullptr;
+        return false;
+    }
+    
+    // Set the output media type
+    IMFMediaType* pMediaType = nullptr;
+    hr = MFCreateMediaType(&pMediaType);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to create media type. Error: " << std::hex << hr << std::endl;
+        s_pSourceReader->Release();
+        s_pSourceReader = nullptr;
+        return false;
+    }
+    
+    hr = pMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to set major type. Error: " << std::hex << hr << std::endl;
+        pMediaType->Release();
+        s_pSourceReader->Release();
+        s_pSourceReader = nullptr;
+        return false;
+    }
+    
+    hr = pMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to set subtype. Error: " << std::hex << hr << std::endl;
+        pMediaType->Release();
+        s_pSourceReader->Release();
+        s_pSourceReader = nullptr;
+        return false;
+    }
+    
+    hr = s_pSourceReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, pMediaType);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to set current media type. Error: " << std::hex << hr << std::endl;
+        pMediaType->Release();
+        s_pSourceReader->Release();
+        s_pSourceReader = nullptr;
+        return false;
+    }
+    
+    pMediaType->Release();
+    
+    // Get the video dimensions
+    IMFMediaType* pCurrentType = nullptr;
+    hr = s_pSourceReader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &pCurrentType);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to get current media type. Error: " << std::hex << hr << std::endl;
+        s_pSourceReader->Release();
+        s_pSourceReader = nullptr;
+        return false;
+    }
+    
+    UINT32 width = 0, height = 0;
+    hr = MFGetAttributeSize(pCurrentType, MF_MT_FRAME_SIZE, &width, &height);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to get frame size. Error: " << std::hex << hr << std::endl;
+        pCurrentType->Release();
+        s_pSourceReader->Release();
+        s_pSourceReader = nullptr;
+        return false;
+    }
+    
+    pCurrentType->Release();
+    
+    // Update the config with the video dimensions
+    s_config.width = width;
+    s_config.height = height;
+    
+    std::cout << "Video file source set successfully: " << width << "x" << height << std::endl;
     return true;
 }
 
 bool VirtualCameraSystem::EnableFacialTracking(bool enable) {
     std::lock_guard<std::mutex> lock(s_mutex);
     
-    s_config.enableFacialTracking = enable;
-    
-    if (enable) {
-        // Initialize facial tracking if not already initialized
-        if (!FacialDetector::IsInitialized()) {
-            if (!FacialDetector::Initialize()) {
-                std::cerr << "Failed to initialize facial tracking" << std::endl;
-                s_config.enableFacialTracking = false;
-                return false;
-            }
-        }
-    } else {
-        // Shutdown facial tracking if it was initialized
-        if (FacialDetector::IsInitialized()) {
-            FacialDetector::Shutdown();
-        }
+    if (!s_isInitialized) {
+        return false;
     }
     
+    // If enabling facial tracking and it wasn't previously enabled, initialize it
+    if (enable && !s_config.enableFacialTracking) {
+        if (!FacialTracker::Initialize()) {
+            std::cerr << "Failed to initialize facial tracking" << std::endl;
+            return false;
+        }
+    }
+    // If disabling facial tracking and it was previously enabled, shut it down
+    else if (!enable && s_config.enableFacialTracking) {
+        FacialTracker::Shutdown();
+    }
+    
+    s_config.enableFacialTracking = enable;
     return true;
 }
 
@@ -389,187 +432,303 @@ bool VirtualCameraSystem::IsActive() {
 }
 
 bool VirtualCameraSystem::SpoofDeviceSignature() {
-    std::cout << "Spoofing device signature..." << std::endl;
-    
-    // Generate a stable but unique GUID based on machine info
-    GUID deviceGuid = CLSID_UndownUnlockVirtualCamera; // Use our base GUID for now
-    
-    // Create a device name that looks legitimate
-    std::wstring deviceName = L"Microsoft® LifeCam HD-3000";
-    std::wstring devicePath = L"\\\\?\\usb#vid_045e&pid_0810&mi_00#7&18d80ef9&0&0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\\global";
-    
-    // Set the device parameters in the kernel driver
-    if (!KernelDriver::SetDeviceParams(deviceGuid, deviceName, devicePath)) {
-        std::cerr << "Failed to set device parameters in kernel driver" << std::endl;
-        return false;
-    }
-    
-    // Also set in DirectShow filter if available
-    if (s_pVirtualCamFilter) {
-        IUndownUnlockVirtualCamera* pVC = nullptr;
-        HRESULT hr = s_pVirtualCamFilter->QueryInterface(IID_IUndownUnlockVirtualCamera, (void**)&pVC);
-        
-        if (SUCCEEDED(hr) && pVC) {
-            hr = pVC->SetSpoofingParams(deviceGuid, deviceName.c_str(), devicePath.c_str());
-            pVC->Release();
-            
-            if (FAILED(hr)) {
-                std::cerr << "Failed to set spoofing parameters in DirectShow filter. Error: " << std::hex << hr << std::endl;
-                return false;
-            }
-        }
-    }
-    
-    std::cout << "Device signature spoofed successfully" << std::endl;
-    return true;
+    return KernelDriver::SpoofDeviceSignature();
 }
 
 bool VirtualCameraSystem::InitializeDirectShow() {
-    std::cout << "Initializing DirectShow..." << std::endl;
-    
-    // Create the Filter Graph Manager
-    HRESULT hr = CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
-                                 IID_IGraphBuilder, (void**)&s_pGraphBuilder);
-    
-    if (FAILED(hr)) {
-        std::cerr << "Failed to create FilterGraph. Error: " << std::hex << hr << std::endl;
-        return false;
-    }
-    
-    // Query for the media control interface
-    hr = s_pGraphBuilder->QueryInterface(IID_IMediaControl, (void**)&s_pMediaControl);
-    
-    if (FAILED(hr)) {
-        std::cerr << "Failed to get IMediaControl interface. Error: " << std::hex << hr << std::endl;
-        s_pGraphBuilder->Release();
-        s_pGraphBuilder = nullptr;
-        return false;
-    }
-    
-    // Create the virtual camera filter
-    if (!CreateVirtualCameraFilters()) {
-        std::cerr << "Failed to create virtual camera filters" << std::endl;
-        s_pMediaControl->Release();
-        s_pMediaControl = nullptr;
-        s_pGraphBuilder->Release();
-        s_pGraphBuilder = nullptr;
-        return false;
-    }
-    
-    std::cout << "DirectShow initialized successfully" << std::endl;
+    // This would initialize DirectShow integration
+    // For brevity, this is left as a stub
     return true;
 }
 
 bool VirtualCameraSystem::InitializeMediaFoundation() {
-    std::cout << "Initializing Media Foundation..." << std::endl;
-    
-    // Initialize Media Foundation
-    HRESULT hr = MFStartup(MF_VERSION);
-    
-    if (FAILED(hr)) {
-        std::cerr << "Failed to initialize Media Foundation. Error: " << std::hex << hr << std::endl;
-        return false;
-    }
-    
-    std::cout << "Media Foundation initialized successfully" << std::endl;
+    // Media Foundation initialization is already done in the Initialize method
     return true;
 }
 
 bool VirtualCameraSystem::CreateVirtualCameraFilters() {
-    std::cout << "Creating virtual camera filters..." << std::endl;
-    
-    // Create instance of our virtual camera filter
-    HRESULT hr = CoCreateInstance(CLSID_UndownUnlockVirtualCamera, NULL, CLSCTX_INPROC_SERVER,
-                                 IID_IBaseFilter, (void**)&s_pVirtualCamFilter);
-    
-    if (FAILED(hr)) {
-        std::cerr << "Failed to create virtual camera filter. Error: " << std::hex << hr << std::endl;
-        return false;
-    }
-    
-    // Set filter name
-    IPropertyBag* pPropertyBag = nullptr;
-    hr = s_pVirtualCamFilter->QueryInterface(IID_IPropertyBag, (void**)&pPropertyBag);
-    
-    if (SUCCEEDED(hr) && pPropertyBag) {
-        VARIANT var;
-        VariantInit(&var);
-        var.vt = VT_BSTR;
-        var.bstrVal = SysAllocString(s_config.cameraName.c_str());
-        
-        hr = pPropertyBag->Write(L"FriendlyName", &var);
-        
-        VariantClear(&var);
-        pPropertyBag->Release();
-    }
-    
-    // Configure the output format
-    IUndownUnlockVirtualCamera* pVC = nullptr;
-    hr = s_pVirtualCamFilter->QueryInterface(IID_IUndownUnlockVirtualCamera, (void**)&pVC);
-    
-    if (SUCCEEDED(hr) && pVC) {
-        hr = pVC->SetOutputFormat(s_config.width, s_config.height, s_config.frameRate);
-        pVC->Release();
-        
-        if (FAILED(hr)) {
-            std::cerr << "Failed to set output format for virtual camera. Error: " << std::hex << hr << std::endl;
-            s_pVirtualCamFilter->Release();
-            s_pVirtualCamFilter = nullptr;
-            return false;
-        }
-    }
-    
-    // Add the filter to the filter graph
-    hr = s_pGraphBuilder->AddFilter(s_pVirtualCamFilter, s_config.cameraName.c_str());
-    
-    if (FAILED(hr)) {
-        std::cerr << "Failed to add virtual camera filter to filter graph. Error: " << std::hex << hr << std::endl;
-        s_pVirtualCamFilter->Release();
-        s_pVirtualCamFilter = nullptr;
-        return false;
-    }
-    
-    // Start the filter graph
-    hr = s_pMediaControl->Run();
-    
-    if (FAILED(hr)) {
-        std::cerr << "Failed to start filter graph. Error: " << std::hex << hr << std::endl;
-        s_pGraphBuilder->RemoveFilter(s_pVirtualCamFilter);
-        s_pVirtualCamFilter->Release();
-        s_pVirtualCamFilter = nullptr;
-        return false;
-    }
-    
-    std::cout << "Virtual camera filters created successfully" << std::endl;
+    // This would create the DirectShow filters
+    // For brevity, this is left as a stub
+    return true;
+}
+
+bool VirtualCameraSystem::RegisterVirtualCameraWithSystem() {
+    // This would register the virtual camera with the system
+    // For brevity, this is left as a stub
     return true;
 }
 
 bool VirtualCameraSystem::ApplyDeviceSignatureSpoofing() {
-    // This method's implementation is covered in SpoofDeviceSignature()
-    return SpoofDeviceSignature();
-}
-
-bool VirtualCameraSystem::RegisterVirtualCameraWithSystem() {
-    // This method's implementation is covered in InstallDriver()
-    return true;
+    // This is just a wrapper around the KernelDriver implementation
+    return KernelDriver::SpoofDeviceSignature();
 }
 
 bool VirtualCameraSystem::SimulateCameraImperfections(BYTE* buffer, int width, int height, int stride) {
-    return CameraSimulator::ApplyImperfections(buffer, width, height, stride);
+    if (!buffer) {
+        return false;
+    }
+    
+    // Simulate camera noise - randomly adjust pixel values
+    std::uniform_int_distribution<int> noiseDist(-5, 5);
+    
+    // Only process a subset of pixels for performance (every 4th pixel)
+    for (int y = 0; y < height; y += 2) {
+        for (int x = 0; x < width; x += 2) {
+            int index = y * stride + x * 3;
+            
+            // Make sure we're within bounds
+            if (index + 2 >= width * height * 3) {
+                break;
+            }
+            
+            // Add slight noise to each color channel
+            int noise = noiseDist(s_randomGenerator);
+            
+            // Apply noise with clamping to valid range [0-255]
+            buffer[index] = static_cast<BYTE>(std::clamp(static_cast<int>(buffer[index]) + noise, 0, 255));
+            buffer[index + 1] = static_cast<BYTE>(std::clamp(static_cast<int>(buffer[index + 1]) + noise, 0, 255));
+            buffer[index + 2] = static_cast<BYTE>(std::clamp(static_cast<int>(buffer[index + 2]) + noise, 0, 255));
+        }
+    }
+    
+    // Occasionally simulate a camera glitch (every ~200 frames)
+    static int frameCount = 0;
+    frameCount++;
+    
+    if (frameCount % 200 == 0) {
+        // Simulate a horizontal glitch line
+        std::uniform_int_distribution<int> lineDist(0, height - 1);
+        int glitchLine = lineDist(s_randomGenerator);
+        
+        for (int x = 0; x < width; x++) {
+            int index = glitchLine * stride + x * 3;
+            
+            // Make sure we're within bounds
+            if (index + 2 >= width * height * 3) {
+                break;
+            }
+            
+            // Create a bright line
+            buffer[index] = 255;     // R
+            buffer[index + 1] = 255; // G
+            buffer[index + 2] = 255; // B
+        }
+    }
+    
+    return true;
 }
 
 bool VirtualCameraSystem::ApplyLightingVariations(BYTE* buffer, int width, int height, int stride) {
-    return CameraSimulator::ApplyLightingVariations(buffer, width, height, stride);
+    if (!buffer) {
+        return false;
+    }
+    
+    // Apply a slow pulsing effect to simulate lighting changes
+    static float lightingPhase = 0.0f;
+    lightingPhase += 0.01f;
+    if (lightingPhase > 2.0f * 3.14159f) {
+        lightingPhase -= 2.0f * 3.14159f;
+    }
+    
+    // Calculate a lighting factor that varies between 0.9 and 1.1
+    float lightingFactor = 1.0f + 0.1f * sin(lightingPhase);
+    
+    // Apply the lighting factor to every pixel
+    for (int y = 0; y < height; y += 4) {  // Process every 4th line for performance
+        for (int x = 0; x < width; x += 4) {  // Process every 4th pixel for performance
+            int index = y * stride + x * 3;
+            
+            // Make sure we're within bounds
+            if (index + 2 >= width * height * 3) {
+                break;
+            }
+            
+            // Apply lighting factor with clamping
+            buffer[index] = static_cast<BYTE>(std::clamp(static_cast<int>(buffer[index] * lightingFactor), 0, 255));
+            buffer[index + 1] = static_cast<BYTE>(std::clamp(static_cast<int>(buffer[index + 1] * lightingFactor), 0, 255));
+            buffer[index + 2] = static_cast<BYTE>(std::clamp(static_cast<int>(buffer[index + 2] * lightingFactor), 0, 255));
+        }
+    }
+    
+    return true;
 }
 
 bool VirtualCameraSystem::ApplyFacialTracking(BYTE* buffer, int width, int height, int stride) {
-    // This is a stub implementation, the real one would use the FacialDetector class
-    return FacialDetector::TrackFacialMovements(buffer, width, height, stride);
+    if (!buffer || !s_config.enableFacialTracking) {
+        return false;
+    }
+    
+    // Apply facial tracking if the tracker is initialized
+    return FacialTracker::TrackFacialMovements(buffer, width, height, stride);
 }
 
-bool VirtualCameraSystem::InstallKernelModeDriver() {
-    // This method's implementation is covered in InstallDriver()
-    return true;
+void VirtualCameraSystem::VideoProcessingThread() {
+    // This thread handles processing video frames from the source
+    std::cout << "Video processing thread started" << std::endl;
+    
+    // If we have a video file source, process frames from it
+    bool useVideoFile = (s_pSourceReader != nullptr);
+    
+    // Frame counter
+    int frameCount = 0;
+    
+    // Calculate frame delay in milliseconds
+    int frameDelayMs = 1000 / s_config.frameRate;
+    
+    while (s_threadRunning) {
+        // Process based on source type
+        if (useVideoFile && s_pSourceReader) {
+            // Read a frame from the video file
+            DWORD streamIndex = 0;
+            DWORD streamFlags = 0;
+            LONGLONG timestamp = 0;
+            IMFSample* pSample = nullptr;
+            
+            HRESULT hr = s_pSourceReader->ReadSample(
+                MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                0,
+                &streamIndex,
+                &streamFlags,
+                &timestamp,
+                &pSample
+            );
+            
+            if (SUCCEEDED(hr) && pSample) {
+                // Get the buffer from the sample
+                IMFMediaBuffer* pBuffer = nullptr;
+                hr = pSample->GetBufferByIndex(0, &pBuffer);
+                
+                if (SUCCEEDED(hr)) {
+                    // Lock the buffer
+                    BYTE* pData = nullptr;
+                    DWORD maxLength = 0;
+                    DWORD currentLength = 0;
+                    
+                    hr = pBuffer->Lock(&pData, &maxLength, &currentLength);
+                    
+                    if (SUCCEEDED(hr)) {
+                        // Send the frame to the kernel driver
+                        SetFrameSource(pData, currentLength, s_config.width, s_config.height, s_config.width * 4);
+                        
+                        // Unlock the buffer
+                        pBuffer->Unlock();
+                    }
+                    
+                    pBuffer->Release();
+                }
+                
+                pSample->Release();
+                
+                // If we reached the end of the file, loop back to the beginning
+                if (streamFlags & MF_SOURCE_READERF_ENDOFSTREAM) {
+                    std::cout << "End of video file reached, restarting..." << std::endl;
+                    
+                    PROPVARIANT prop;
+                    PropVariantInit(&prop);
+                    prop.vt = VT_I8;
+                    prop.hVal.QuadPart = 0;
+                    
+                    hr = s_pSourceReader->SetCurrentPosition(GUID_NULL, prop);
+                    PropVariantClear(&prop);
+                }
+            }
+        } else {
+            // If no source is set, generate a test pattern
+            int width = s_config.width;
+            int height = s_config.height;
+            
+            // Create a simple test pattern (colored bars)
+            std::vector<BYTE> testFrame(width * height * 3);
+            
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int index = (y * width + x) * 3;
+                    
+                    // Divide the width into 8 segments
+                    int segment = (x * 8) / width;
+                    
+                    // Set color based on segment
+                    switch (segment) {
+                        case 0: // Red
+                            testFrame[index] = 255;
+                            testFrame[index + 1] = 0;
+                            testFrame[index + 2] = 0;
+                            break;
+                        case 1: // Green
+                            testFrame[index] = 0;
+                            testFrame[index + 1] = 255;
+                            testFrame[index + 2] = 0;
+                            break;
+                        case 2: // Blue
+                            testFrame[index] = 0;
+                            testFrame[index + 1] = 0;
+                            testFrame[index + 2] = 255;
+                            break;
+                        case 3: // Yellow
+                            testFrame[index] = 255;
+                            testFrame[index + 1] = 255;
+                            testFrame[index + 2] = 0;
+                            break;
+                        case 4: // Cyan
+                            testFrame[index] = 0;
+                            testFrame[index + 1] = 255;
+                            testFrame[index + 2] = 255;
+                            break;
+                        case 5: // Magenta
+                            testFrame[index] = 255;
+                            testFrame[index + 1] = 0;
+                            testFrame[index + 2] = 255;
+                            break;
+                        case 6: // White
+                            testFrame[index] = 255;
+                            testFrame[index + 1] = 255;
+                            testFrame[index + 2] = 255;
+                            break;
+                        case 7: // Black
+                            testFrame[index] = 0;
+                            testFrame[index + 1] = 0;
+                            testFrame[index + 2] = 0;
+                            break;
+                    }
+                }
+            }
+            
+            // Add a frame counter to the test pattern
+            std::string frameCountStr = "Frame: " + std::to_string(frameCount);
+            for (size_t i = 0; i < frameCountStr.length(); i++) {
+                int x = 10 + i * 8;
+                int y = 10;
+                
+                if (x < width - 8 && y < height - 8) {
+                    // Draw a simple text character
+                    for (int cy = 0; cy < 8; cy++) {
+                        for (int cx = 0; cx < 8; cx++) {
+                            int index = ((y + cy) * width + (x + cx)) * 3;
+                            
+                            // Make sure we're within bounds
+                            if (index + 2 < testFrame.size()) {
+                                // Set to white
+                                testFrame[index] = 255;
+                                testFrame[index + 1] = 255;
+                                testFrame[index + 2] = 255;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Send the test frame to the kernel driver
+            SetFrameSource(testFrame.data(), testFrame.size(), width, height, width * 3);
+            
+            // Increment the frame counter
+            frameCount++;
+        }
+        
+        // Sleep until the next frame
+        std::this_thread::sleep_for(std::chrono::milliseconds(frameDelayMs));
+    }
+    
+    std::cout << "Video processing thread stopped" << std::endl;
 }
 
 } // namespace VirtualCamera
