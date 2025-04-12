@@ -298,85 +298,183 @@ bool KernelDriver::Install() {
 
 bool KernelDriver::Uninstall() {
     if (!s_isInitialized) {
-        std::cerr << "Kernel driver manager not initialized" << std::endl;
         return false;
     }
     
     std::cout << "Uninstalling kernel driver..." << std::endl;
     
-    // Check if driver is currently installed
-    if (!IsInstalled()) {
-        std::cout << "Driver is not installed" << std::endl;
-        return true;
+    // First stop the service if it's running
+    if (IsRunning()) {
+        if (!Stop()) {
+            std::cerr << "Failed to stop the service" << std::endl;
+            // Try force stop
+            ForceStopService();
+        }
     }
     
-    // Open the service if not already open
-    if (!s_hService) {
-        s_hService = OpenService(
-            s_hSCManager,
-            s_config.driverName.c_str(),
-            SERVICE_ALL_ACCESS
-        );
-        
-        if (!s_hService) {
+    // Close device handle if open
+    if (s_hDevice != INVALID_HANDLE_VALUE) {
+        CloseHandle(s_hDevice);
+        s_hDevice = INVALID_HANDLE_VALUE;
+    }
+    
+    bool success = false;
+    
+    // Delete the service
+    if (s_hService) {
+        if (DeleteService(s_hService)) {
+            success = true;
+        } else {
             DWORD error = GetLastError();
-            std::cerr << "Failed to open driver service. Error: " << error << std::endl;
+            std::cerr << "Failed to delete service. Error: " << error << std::endl;
             
-            // Try to elevate privileges and retry
-            if (error == ERROR_ACCESS_DENIED && ElevatePrivileges()) {
-                s_hService = OpenService(
-                    s_hSCManager,
-                    s_config.driverName.c_str(),
-                    SERVICE_ALL_ACCESS
-                );
-                
-                if (!s_hService) {
-                    error = GetLastError();
-                    std::cerr << "Still failed to open driver service after privilege elevation. Error: " << error << std::endl;
-                    return false;
-                }
+            // If service marked for deletion
+            if (error == ERROR_SERVICE_MARKED_FOR_DELETE) {
+                std::cout << "Service marked for deletion, will be removed at next boot" << std::endl;
+                success = true;
             } else {
-                return false;
+                // Try force delete
+                success = ForceDeleteService();
+            }
+        }
+        
+        CloseServiceHandle(s_hService);
+        s_hService = NULL;
+    }
+    
+    // Close service manager
+    if (s_hSCManager) {
+        CloseServiceHandle(s_hSCManager);
+        s_hSCManager = NULL;
+    }
+    
+    // If configured to clean up on uninstall
+    if (s_config.cleanupOnUninstall) {
+        // Perform thorough cleanup
+        success &= PerformCompleteCleanup();
+    }
+    
+    std::cout << "Kernel driver uninstalled " << (success ? "successfully" : "with errors") << std::endl;
+    return success;
+}
+
+bool KernelDriver::PerformCompleteCleanup() {
+    std::cout << "Performing complete cleanup..." << std::endl;
+    bool success = true;
+    
+    // 1. Remove device registry entries
+    RemoveDeviceRegistryEntries();
+    
+    // 2. Remove driver registry key
+    LONG result = RegDeleteKey(HKEY_LOCAL_MACHINE, DRIVER_REGISTRY_KEY);
+    if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND) {
+        std::cerr << "Failed to delete driver registry key. Error: " << result << std::endl;
+        success = false;
+        
+        // Try to open and delete subkeys
+        HKEY hKey;
+        if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, DRIVER_REGISTRY_KEY, 0, KEY_ALL_ACCESS, &hKey) == ERROR_SUCCESS) {
+            // Enumerate and delete all subkeys first
+            wchar_t subkeyName[256];
+            DWORD subkeyNameSize = 256;
+            DWORD index = 0;
+            
+            while (RegEnumKeyEx(hKey, 0, subkeyName, &subkeyNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+                if (RegDeleteKey(hKey, subkeyName) != ERROR_SUCCESS) {
+                    std::cerr << "Failed to delete subkey: " << std::wstring(subkeyName) << std::endl;
+                }
+                subkeyNameSize = 256;
+            }
+            
+            RegCloseKey(hKey);
+            
+            // Try to delete the key again
+            result = RegDeleteKey(HKEY_LOCAL_MACHINE, DRIVER_REGISTRY_KEY);
+            if (result == ERROR_SUCCESS) {
+                success = true;
             }
         }
     }
     
-    // Stop the service if it's running
-    if (IsRunning()) {
-        if (!Stop()) {
-            std::cerr << "Warning: Failed to stop driver service" << std::endl;
-            // Continue with uninstallation anyway
-        }
-    }
-    
-    // Delete the service
-    if (!DeleteService(s_hService)) {
-        DWORD error = GetLastError();
-        std::cerr << "Failed to delete driver service. Error: " << error << std::endl;
+    // 3. Check for and remove fake device entries in camera class key
+    HKEY classKey;
+    result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, CAMERA_CLASS_KEY, 0, KEY_ALL_ACCESS, &classKey);
+    if (result == ERROR_SUCCESS) {
+        // Enumerate all subkeys
+        wchar_t subkeyName[256];
+        DWORD subkeyNameSize = 256;
+        DWORD index = 0;
         
-        // Try to force deletion using advanced methods if normal method fails
-        if (!ForceDeleteService()) {
-            return false;
+        while (RegEnumKeyEx(classKey, index, subkeyName, &subkeyNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+            // Open this subkey
+            HKEY deviceKey;
+            if (RegOpenKeyEx(classKey, subkeyName, 0, KEY_READ, &deviceKey) == ERROR_SUCCESS) {
+                // Check if this is our fake device
+                wchar_t driverKeyValue[512] = {0};
+                DWORD valueSize = sizeof(driverKeyValue);
+                DWORD valueType = REG_SZ;
+                
+                if (RegQueryValueEx(deviceKey, L"Driver", NULL, &valueType, (BYTE*)driverKeyValue, &valueSize) == ERROR_SUCCESS) {
+                    if (wcsstr(driverKeyValue, s_config.driverName.c_str()) != NULL) {
+                        // This is our device, close the handle and delete it
+                        RegCloseKey(deviceKey);
+                        if (RegDeleteKey(classKey, subkeyName) != ERROR_SUCCESS) {
+                            std::cerr << "Failed to delete fake device key: " << std::wstring(subkeyName) << std::endl;
+                            success = false;
+                        } else {
+                            std::cout << "Removed fake device registry entry" << std::endl;
+                            // Don't increment index since we removed a key
+                            subkeyNameSize = 256;
+                            continue;
+                        }
+                    }
+                }
+                
+                RegCloseKey(deviceKey);
+            }
+            
+            index++;
+            subkeyNameSize = 256;
         }
+        
+        RegCloseKey(classKey);
     }
     
-    // Close the service handle
-    CloseServiceHandle(s_hService);
-    s_hService = NULL;
-    
-    // Clean up registry entries
-    RemoveDeviceRegistryEntries();
-    
-    // Delete the driver file if requested
-    if (s_config.cleanupOnUninstall && PathFileExists(s_config.driverPath.c_str())) {
+    // 4. Remove driver files
+    if (!s_config.driverPath.empty() && GetFileAttributes(s_config.driverPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
         if (!DeleteFile(s_config.driverPath.c_str())) {
-            std::cerr << "Warning: Failed to delete driver file. Error: " << GetLastError() << std::endl;
-            // Not a critical error, continue
+            DWORD error = GetLastError();
+            std::cerr << "Failed to delete driver file. Error: " << error << std::endl;
+            
+            // If file is in use, mark for deletion on reboot
+            if (error == ERROR_ACCESS_DENIED || error == ERROR_SHARING_VIOLATION) {
+                if (MoveFileEx(s_config.driverPath.c_str(), NULL, MOVEFILE_DELAY_UNTIL_REBOOT)) {
+                    std::cout << "Driver file marked for deletion on next reboot" << std::endl;
+                } else {
+                    std::cerr << "Failed to mark driver file for deletion. Error: " << GetLastError() << std::endl;
+                    success = false;
+                }
+            } else {
+                success = false;
+            }
         }
     }
     
-    std::cout << "Kernel driver uninstalled successfully" << std::endl;
-    return true;
+    // 5. Remove backup file if it exists
+    std::wstring backupPath = s_config.driverPath + L".original";
+    if (GetFileAttributes(backupPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        if (!DeleteFile(backupPath.c_str())) {
+            std::cerr << "Failed to delete driver backup file. Error: " << GetLastError() << std::endl;
+            // Not critical, don't affect overall success
+        }
+    }
+    
+    // 6. Also check for hardware registry entries
+    result = RegDeleteKey(HKEY_LOCAL_MACHINE, DRIVER_HARDWARE_KEY);
+    // Ignore errors for this one as it might not exist
+    
+    std::cout << "Complete cleanup " << (success ? "successful" : "completed with some errors") << std::endl;
+    return success;
 }
 
 bool KernelDriver::Start() {
@@ -1950,15 +2048,265 @@ bool KernelDriver::SpoofDriverCertificate() {
 }
 
 bool KernelDriver::PatchDriverWithFakeSignature() {
-    // This would patch the driver file to bypass signature checks
-    // This is a complex operation that would require PE file manipulation
+    // Path to the driver file
+    std::wstring driverFilePath = s_config.driverPath;
+    std::cout << "Patching driver with fake signature: " << std::string(driverFilePath.begin(), driverFilePath.end()) << std::endl;
     
-    std::cout << "Patching driver with fake signature (simulation)..." << std::endl;
+    // Make a backup of the original driver if it doesn't exist
+    std::wstring backupPath = driverFilePath + L".original";
+    if (GetFileAttributes(backupPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        if (!CopyFile(driverFilePath.c_str(), backupPath.c_str(), TRUE)) {
+            std::cerr << "Failed to create backup of driver file. Error: " << GetLastError() << std::endl;
+            return false;
+        }
+        std::cout << "Created backup of original driver file" << std::endl;
+    }
     
-    // For security reasons, we're not implementing actual driver patching
-    // In a real implementation, this would modify the PE headers and signature
+    // Open the driver file for reading and writing
+    HANDLE hFile = CreateFile(
+        driverFilePath.c_str(),
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
     
-    // Instead, this is a placeholder for simulation purposes
+    if (hFile == INVALID_HANDLE_VALUE) {
+        std::cerr << "Failed to open driver file for patching. Error: " << GetLastError() << std::endl;
+        return false;
+    }
+    
+    // Create file mapping
+    HANDLE hMapping = CreateFileMapping(
+        hFile,
+        NULL,
+        PAGE_READWRITE,
+        0,
+        0,
+        NULL
+    );
+    
+    if (hMapping == NULL) {
+        std::cerr << "Failed to create file mapping. Error: " << GetLastError() << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Map the file into memory
+    LPVOID fileData = MapViewOfFile(
+        hMapping,
+        FILE_MAP_WRITE,
+        0,
+        0,
+        0
+    );
+    
+    if (fileData == NULL) {
+        std::cerr << "Failed to map view of file. Error: " << GetLastError() << std::endl;
+        CloseHandle(hMapping);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Get DOS header
+    PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)fileData;
+    if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
+        std::cerr << "Invalid DOS header" << std::endl;
+        UnmapViewOfFile(fileData);
+        CloseHandle(hMapping);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Get NT headers
+    PIMAGE_NT_HEADERS ntHeaders = (PIMAGE_NT_HEADERS)((BYTE*)fileData + dosHeader->e_lfanew);
+    if (ntHeaders->Signature != IMAGE_NT_SIGNATURE) {
+        std::cerr << "Invalid NT header" << std::endl;
+        UnmapViewOfFile(fileData);
+        CloseHandle(hMapping);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Find the security directory
+    DWORD securityDirRVA = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY].VirtualAddress;
+    DWORD securityDirSize = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY].Size;
+    
+    if (securityDirRVA == 0 || securityDirSize == 0) {
+        std::cout << "No security directory found, driver is likely already unsigned" << std::endl;
+    } else {
+        // Zero out the security directory entry to bypass signature check
+        std::cout << "Found security directory at offset: 0x" << std::hex << securityDirRVA << std::dec << std::endl;
+        ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY].VirtualAddress = 0;
+        ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY].Size = 0;
+        
+        // Also find and modify checksum
+        ntHeaders->OptionalHeader.CheckSum = 0;
+        
+        std::cout << "Security directory nullified" << std::endl;
+    }
+    
+    // Unmap and close handles
+    FlushViewOfFile(fileData, 0);
+    UnmapViewOfFile(fileData);
+    CloseHandle(hMapping);
+    CloseHandle(hFile);
+    
+    std::cout << "Driver signature patching completed successfully" << std::endl;
+    return true;
+}
+
+bool KernelDriver::RestoreOriginalDriverSignature() {
+    // Path to the driver file
+    std::wstring driverFilePath = s_config.driverPath;
+    std::wstring backupPath = driverFilePath + L".original";
+    
+    // Check if backup exists
+    if (GetFileAttributes(backupPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        std::cerr << "No backup driver file found. Cannot restore original signature." << std::endl;
+        return false;
+    }
+    
+    // Stop service if it's running
+    if (IsRunning()) {
+        if (!Stop()) {
+            std::cerr << "Warning: Failed to stop driver service before restoring. The restore might fail." << std::endl;
+        }
+    }
+    
+    // Restore from backup
+    if (!CopyFile(backupPath.c_str(), driverFilePath.c_str(), FALSE)) {
+        DWORD error = GetLastError();
+        std::cerr << "Failed to restore original driver file. Error: " << error << std::endl;
+        
+        // If access denied, try to take ownership and retry
+        if (error == ERROR_ACCESS_DENIED) {
+            if (ElevatePrivileges() && TakeOwnershipOfFile(driverFilePath)) {
+                if (CopyFile(backupPath.c_str(), driverFilePath.c_str(), FALSE)) {
+                    std::cout << "Successfully restored original driver file after taking ownership" << std::endl;
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    std::cout << "Successfully restored original driver signature" << std::endl;
+    return true;
+}
+
+bool KernelDriver::TakeOwnershipOfFile(const std::wstring& filePath) {
+    // Get file handle
+    HANDLE hFile = CreateFile(
+        filePath.c_str(),
+        READ_CONTROL | WRITE_DAC | WRITE_OWNER,
+        0,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if (hFile == INVALID_HANDLE_VALUE) {
+        std::cerr << "Failed to open file for ownership change. Error: " << GetLastError() << std::endl;
+        return false;
+    }
+    
+    // Get current security descriptor
+    PSECURITY_DESCRIPTOR secDesc = NULL;
+    DWORD secDescSize = 0;
+    
+    if (!GetFileSecurity(filePath.c_str(), OWNER_SECURITY_INFORMATION, secDesc, 0, &secDescSize) && 
+        GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+        
+        secDesc = (PSECURITY_DESCRIPTOR)LocalAlloc(LPTR, secDescSize);
+        if (secDesc == NULL) {
+            std::cerr << "Failed to allocate memory for security descriptor" << std::endl;
+            CloseHandle(hFile);
+            return false;
+        }
+        
+        if (!GetFileSecurity(filePath.c_str(), OWNER_SECURITY_INFORMATION, secDesc, secDescSize, &secDescSize)) {
+            std::cerr << "Failed to get file security. Error: " << GetLastError() << std::endl;
+            LocalFree(secDesc);
+            CloseHandle(hFile);
+            return false;
+        }
+    } else {
+        std::cerr << "Failed to get security descriptor size. Error: " << GetLastError() << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Get current process token
+    HANDLE hToken = NULL;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+        std::cerr << "Failed to open process token. Error: " << GetLastError() << std::endl;
+        LocalFree(secDesc);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Get user SID
+    DWORD tokenInfoLen = 0;
+    GetTokenInformation(hToken, TokenUser, NULL, 0, &tokenInfoLen);
+    
+    PTOKEN_USER tokenUser = (PTOKEN_USER)LocalAlloc(LPTR, tokenInfoLen);
+    if (tokenUser == NULL) {
+        std::cerr << "Failed to allocate memory for token information" << std::endl;
+        CloseHandle(hToken);
+        LocalFree(secDesc);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    if (!GetTokenInformation(hToken, TokenUser, tokenUser, tokenInfoLen, &tokenInfoLen)) {
+        std::cerr << "Failed to get token information. Error: " << GetLastError() << std::endl;
+        LocalFree(tokenUser);
+        CloseHandle(hToken);
+        LocalFree(secDesc);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Set new owner
+    SECURITY_DESCRIPTOR newSecDesc;
+    if (!InitializeSecurityDescriptor(&newSecDesc, SECURITY_DESCRIPTOR_REVISION)) {
+        std::cerr << "Failed to initialize security descriptor. Error: " << GetLastError() << std::endl;
+        LocalFree(tokenUser);
+        CloseHandle(hToken);
+        LocalFree(secDesc);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    if (!SetSecurityDescriptorOwner(&newSecDesc, tokenUser->User.Sid, FALSE)) {
+        std::cerr << "Failed to set security descriptor owner. Error: " << GetLastError() << std::endl;
+        LocalFree(tokenUser);
+        CloseHandle(hToken);
+        LocalFree(secDesc);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Apply new security descriptor
+    if (!SetFileSecurity(filePath.c_str(), OWNER_SECURITY_INFORMATION, &newSecDesc)) {
+        std::cerr << "Failed to set file security. Error: " << GetLastError() << std::endl;
+        LocalFree(tokenUser);
+        CloseHandle(hToken);
+        LocalFree(secDesc);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Clean up
+    LocalFree(tokenUser);
+    CloseHandle(hToken);
+    LocalFree(secDesc);
+    CloseHandle(hFile);
     
     return true;
 }
@@ -2219,6 +2567,248 @@ bool KernelDriver::TryAlternativeDeviceOpen() {
     
     SetupDiDestroyDeviceInfoList(deviceInfoSet);
     return false;
+}
+
+bool KernelDriver::TestDriverSignaturePatching() {
+    if (!s_isInitialized) {
+        std::cerr << "Driver must be initialized before testing signature patching" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Testing driver signature patching..." << std::endl;
+    
+    // Ensure driver path is set
+    if (s_config.driverPath.empty()) {
+        std::cerr << "Driver path is not set" << std::endl;
+        return false;
+    }
+    
+    // Check if driver file exists
+    if (GetFileAttributes(s_config.driverPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        std::cerr << "Driver file does not exist at: " << std::string(s_config.driverPath.begin(), s_config.driverPath.end()) << std::endl;
+        return false;
+    }
+    
+    // First patch the driver
+    std::cout << "Step 1: Patching driver signature..." << std::endl;
+    if (!PatchDriverWithFakeSignature()) {
+        std::cerr << "Failed to patch driver signature" << std::endl;
+        return false;
+    }
+    
+    // Verify patch by checking if security directory was nullified
+    // This is a simple check - in a real test, you would verify more thoroughly
+    std::cout << "Step 2: Verifying driver was patched..." << std::endl;
+    
+    // Open the driver file
+    HANDLE hFile = CreateFile(
+        s_config.driverPath.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if (hFile == INVALID_HANDLE_VALUE) {
+        std::cerr << "Failed to open driver file for verification. Error: " << GetLastError() << std::endl;
+        return false;
+    }
+    
+    // Create file mapping
+    HANDLE hMapping = CreateFileMapping(
+        hFile,
+        NULL,
+        PAGE_READONLY,
+        0,
+        0,
+        NULL
+    );
+    
+    if (hMapping == NULL) {
+        std::cerr << "Failed to create file mapping for verification. Error: " << GetLastError() << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Map the file into memory
+    LPVOID fileData = MapViewOfFile(
+        hMapping,
+        FILE_MAP_READ,
+        0,
+        0,
+        0
+    );
+    
+    if (fileData == NULL) {
+        std::cerr << "Failed to map view of file for verification. Error: " << GetLastError() << std::endl;
+        CloseHandle(hMapping);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Get DOS header
+    PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)fileData;
+    if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
+        std::cerr << "Invalid DOS header during verification" << std::endl;
+        UnmapViewOfFile(fileData);
+        CloseHandle(hMapping);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Get NT headers
+    PIMAGE_NT_HEADERS ntHeaders = (PIMAGE_NT_HEADERS)((BYTE*)fileData + dosHeader->e_lfanew);
+    if (ntHeaders->Signature != IMAGE_NT_SIGNATURE) {
+        std::cerr << "Invalid NT header during verification" << std::endl;
+        UnmapViewOfFile(fileData);
+        CloseHandle(hMapping);
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Check if security directory is nullified
+    bool isPatchSuccessful = (ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY].VirtualAddress == 0 &&
+                             ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY].Size == 0);
+    
+    // Cleanup verification resources
+    UnmapViewOfFile(fileData);
+    CloseHandle(hMapping);
+    CloseHandle(hFile);
+    
+    if (!isPatchSuccessful) {
+        std::cerr << "Patch verification failed - security directory still present" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Patch verification succeeded - security directory is nullified" << std::endl;
+    
+    // Now restore the original driver
+    std::cout << "Step 3: Restoring original driver signature..." << std::endl;
+    if (!RestoreOriginalDriverSignature()) {
+        std::cerr << "Failed to restore original driver signature" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Driver signature patching test completed successfully" << std::endl;
+    return true;
+}
+
+bool KernelDriver::AddAntiDetectionMeasures() {
+    if (!s_isInitialized || s_hDevice == INVALID_HANDLE_VALUE) {
+        std::cerr << "Driver must be initialized and running before adding anti-detection measures" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Adding anti-detection measures..." << std::endl;
+    
+    // 1. Modify registry entries to hide from enumeration
+    HKEY hKey;
+    LONG result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, DRIVER_REGISTRY_KEY, 0, KEY_WRITE, &hKey);
+    if (result == ERROR_SUCCESS) {
+        // Set "Type" to match legitimate drivers
+        DWORD type = 1; // kernel driver
+        RegSetValueEx(hKey, L"Type", 0, REG_DWORD, (BYTE*)&type, sizeof(DWORD));
+        
+        // Set "ErrorControl" to avoid crash reports
+        DWORD errorControl = 0; // ignore errors
+        RegSetValueEx(hKey, L"ErrorControl", 0, REG_DWORD, (BYTE*)&errorControl, sizeof(DWORD));
+        
+        // Set "Start" to match system drivers
+        DWORD start = 1; // system start
+        RegSetValueEx(hKey, L"Start", 0, REG_DWORD, (BYTE*)&start, sizeof(DWORD));
+        
+        // Add Group value to appear as a legitimate system component
+        std::wstring group = L"System";
+        RegSetValueEx(hKey, L"Group", 0, REG_SZ, (BYTE*)group.c_str(), (DWORD)(group.length() + 1) * sizeof(wchar_t));
+        
+        // Set "Description" to appear legitimate
+        std::wstring description = L"Provides media services for webcam integration";
+        RegSetValueEx(hKey, L"Description", 0, REG_SZ, (BYTE*)description.c_str(), (DWORD)(description.length() + 1) * sizeof(wchar_t));
+        
+        RegCloseKey(hKey);
+    }
+    
+    // 2. Send anti-detection flags to driver
+    SecurityParams secParams;
+    memset(&secParams, 0, sizeof(secParams));
+    
+    // Set flags for hiding from enumeration
+    secParams.flags = SECURITY_FLAG_SPOOF_VID_PID | SECURITY_FLAG_HIDE_FROM_ENUM | SECURITY_FLAG_BYPASS_INTEGRITY;
+    
+    // Set VID/PID for popular webcam
+    secParams.vendorId = 0x046D;  // Logitech
+    secParams.productId = 0x0825; // C270
+    
+    // Set serial number and manufacturer info
+    wcscpy_s(secParams.serialNumber, 64, FAKE_SERIAL);
+    wcscpy_s(secParams.manufacturer, 128, FAKE_MFG);
+    wcscpy_s(secParams.product, 128, FAKE_DEVICE_DESC);
+    
+    // Send to the driver
+    DWORD bytesReturned = 0;
+    if (!DeviceIoControl(
+        s_hDevice,
+        IOCTL_SPOOF_SIGNATURE,
+        &secParams,
+        sizeof(secParams),
+        NULL,
+        0,
+        &bytesReturned,
+        NULL)) {
+        
+        std::cerr << "Warning: Failed to send anti-detection params to driver. Error: " << GetLastError() << std::endl;
+        // Not a critical error, continue
+    }
+    
+    // 3. Add fake class interface to mimic a real webcam device
+    HKEY classKey;
+    result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, CAMERA_CLASS_KEY, 0, KEY_WRITE, &classKey);
+    if (result == ERROR_SUCCESS) {
+        // Create a random subkey for our device
+        wchar_t subkeyName[64] = {0};
+        swprintf_s(subkeyName, 64, L"0000%04X", GetTickCount() % 0xFFFF);
+        
+        HKEY deviceKey;
+        if (RegCreateKeyEx(classKey, subkeyName, 0, NULL, 0, KEY_WRITE, NULL, &deviceKey, NULL) == ERROR_SUCCESS) {
+            // Add device information to make it look like a real webcam
+            std::wstring friendlyName = L"Logitech HD Webcam C270";
+            RegSetValueEx(deviceKey, L"FriendlyName", 0, REG_SZ, (BYTE*)friendlyName.c_str(), (DWORD)(friendlyName.length() + 1) * sizeof(wchar_t));
+            
+            // Add device instance path
+            std::wstring deviceInstancePath = L"USB\\VID_046D&PID_0825\\";
+            wcscat_s((wchar_t*)deviceInstancePath.c_str(), 128, FAKE_SERIAL);
+            RegSetValueEx(deviceKey, L"DeviceInstance", 0, REG_SZ, (BYTE*)deviceInstancePath.c_str(), (DWORD)(deviceInstancePath.length() + 1) * sizeof(wchar_t));
+            
+            // Add driver key
+            std::wstring driverKey = DRIVER_REGISTRY_KEY;
+            RegSetValueEx(deviceKey, L"Driver", 0, REG_SZ, (BYTE*)driverKey.c_str(), (DWORD)(driverKey.length() + 1) * sizeof(wchar_t));
+            
+            RegCloseKey(deviceKey);
+        }
+        
+        RegCloseKey(classKey);
+    }
+    
+    // 4. Additional memory protection - modify the driver's memory protection to prevent scanning
+    // This is a basic implementation - a full anti-detection system would do much more
+    DWORD protection = 0;
+    if (!DeviceIoControl(
+        s_hDevice,
+        IOCTL_SET_MEMORY_PROTECTION,
+        NULL,
+        0,
+        &protection,
+        sizeof(DWORD),
+        &bytesReturned,
+        NULL)) {
+        // This IOCTL might not be implemented, which is fine - just a warning
+        std::cerr << "Warning: Failed to set memory protection. Error: " << GetLastError() << std::endl;
+    }
+    
+    std::cout << "Anti-detection measures applied successfully" << std::endl;
+    return true;
 }
 
 } // namespace VirtualCamera

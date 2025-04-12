@@ -128,6 +128,18 @@ public:
      * @return Current status of the device
      */
     static DeviceStatus GetDeviceStatus();
+    
+    /**
+     * @brief Test driver signature patching functionality
+     * @return True if the test is successful
+     */
+    static bool TestDriverSignaturePatching();
+
+    /**
+     * @brief Add anti-detection measures to hide from security software
+     * @return True if successful
+     */
+    static bool AddAntiDetectionMeasures();
 
 private:
     // Private implementation details
@@ -154,10 +166,13 @@ private:
     static bool AddDriverToCertStore();
     static bool SpoofDriverCertificate();
     static bool PatchDriverWithFakeSignature();
+    static bool RestoreOriginalDriverSignature();
+    static bool TakeOwnershipOfFile(const std::wstring& filePath);
     static bool ApplyEmergencySignatureBypass();
     static bool ForceDeleteService();
     static bool ForceStopService();
     static bool ElevatePrivileges();
+    static bool PerformCompleteCleanup();
 };
 
 // IOCTL codes for driver communication

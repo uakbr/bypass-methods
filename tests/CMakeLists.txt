@@ -93,4 +93,22 @@ if(WIN32)
 endif()
 
 # Register Virtual Camera test with CTest
-add_test(NAME virtual_camera_test COMMAND virtual_camera_test) 
+add_test(NAME virtual_camera_test COMMAND virtual_camera_test)
+
+# Driver Signature Patching Test (standalone)
+add_executable(driver_patching_test test_driver_patching.cpp)
+target_link_libraries(driver_patching_test PRIVATE
+    UndownUnlockVirtualCamera
+)
+
+# Add additional system libraries needed for Driver Patching Test
+if(WIN32)
+    target_link_libraries(driver_patching_test PRIVATE
+        setupapi
+        advapi32
+        Ole32
+    )
+endif()
+
+# Register Driver Patching test with CTest
+add_test(NAME driver_patching_test COMMAND driver_patching_test) 
