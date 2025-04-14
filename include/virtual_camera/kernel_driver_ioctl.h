@@ -45,6 +45,21 @@ enum class PixelFormat {
 #define SECURITY_FLAG_FAKE_SERIAL         0x00000008
 #define SECURITY_FLAG_TRUSTED_DEVICE      0x00000010
 
+// Memory protection flags
+#define MEMORY_PROT_PREVENT_SCANNING      0x00000001
+#define MEMORY_PROT_OBFUSCATE_REGIONS     0x00000002
+#define MEMORY_PROT_HIDE_FROM_KERNEL      0x00000004
+#define MEMORY_PROT_ENCRYPT_CODE          0x00000008
+#define MEMORY_PROT_ANTI_DEBUG            0x00000010
+#define MEMORY_PROT_PATTERN_MASKING       0x00000020
+
+// Region protection types
+#define REGION_PROT_CODE_SECTION          0x00000001
+#define REGION_PROT_DATA_SECTION          0x00000002
+#define REGION_PROT_RESOURCE_SECTION      0x00000004
+#define REGION_PROT_IMPORT_SECTION        0x00000008
+#define REGION_PROT_EXPORT_SECTION        0x00000010
+
 // Define structures for IOCTL communication (matching kernel structures)
 
 // Video format descriptor
@@ -109,6 +124,25 @@ struct DeviceStatus {
     ULONGLONG frameCount;           // Number of frames processed
     ULONGLONG bytesProcessed;       // Number of bytes processed
     VideoFormat currentFormat;      // Current format
+};
+
+// Memory region protection structure
+struct MemoryRegion {
+    ULONG64 baseAddress;            // Base address of region to protect
+    ULONG64 regionSize;             // Size of region (0 means auto-detect)
+    ULONG protectionType;           // Type of protection to apply
+    ULONG reserved;                 // Reserved for future use
+};
+
+// Memory protection parameters
+struct MemoryProtectionParams {
+    ULONG flags;                    // Memory protection flags
+    ULONG numRegionsToProtect;      // Number of regions to protect
+    MemoryRegion regions[16];       // Array of regions to protect
+    ULONG obfuscationSeed;          // Seed for obfuscation algorithms
+    BOOLEAN enableAntiDebug;        // Enable anti-debugging measures
+    BOOLEAN enableMemoryPatternMasking; // Enable pattern masking
+    BYTE reserved[6];               // Reserved for future use
 };
 
 // Maximum frame size (4K resolution, RGB32)

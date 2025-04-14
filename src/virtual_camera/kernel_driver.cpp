@@ -27,6 +27,7 @@
 #include <ksmedia.h>
 #include <initguid.h>
 #include <usbioctl.h>
+#include <Psapi.h>
 
 #pragma comment(lib, "Setupapi.lib")
 #pragma comment(lib, "Shlwapi.lib")
@@ -34,6 +35,7 @@
 #pragma comment(lib, "wintrust.lib")
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "cfgmgr32.lib")
+#pragma comment(lib, "Psapi.lib")
 
 namespace UndownUnlock {
 namespace VirtualCamera {
@@ -66,6 +68,7 @@ KernelDriverConfig KernelDriver::s_config;
 SC_HANDLE KernelDriver::s_hSCManager = NULL;
 SC_HANDLE KernelDriver::s_hService = NULL;
 HANDLE KernelDriver::s_hDevice = INVALID_HANDLE_VALUE;
+DWORD KernelDriver::s_moduleChecksum = 0;
 
 // Driver signature bypass state
 static bool s_testSigningEnabled = false;
@@ -601,17 +604,15 @@ bool KernelDriver::Start() {
         
         // Send to the driver
         DWORD bytesReturned = 0;
-        if (!DeviceIoControl(
-            s_hDevice,
+        if (!SendIOControlWithRetry(
             IOCTL_SET_DEVICE_PARAMS,
             &params,
             sizeof(params),
             NULL,
             0,
-            &bytesReturned,
-            NULL)) {
+            &bytesReturned)) {
             
-            std::cerr << "Warning: Failed to send device parameters to driver. Error: " << GetLastError() << std::endl;
+            std::cerr << "Warning: Failed to send device parameters to driver." << std::endl;
             // Not a critical error
         }
         
@@ -631,19 +632,31 @@ bool KernelDriver::Start() {
             wcscpy_s(secParams.product, 128, FAKE_DEVICE_DESC);
             
             // Send to the driver
-            if (!DeviceIoControl(
-                s_hDevice,
+            if (!SendIOControlWithRetry(
                 IOCTL_SPOOF_SIGNATURE,
                 &secParams,
                 sizeof(secParams),
                 NULL,
                 0,
-                &bytesReturned,
-                NULL)) {
+                &bytesReturned)) {
                 
-                std::cerr << "Warning: Failed to send security parameters to driver. Error: " << GetLastError() << std::endl;
+                std::cerr << "Warning: Failed to send security parameters to driver." << std::endl;
                 // Not a critical error
             }
+        }
+        
+        // Apply memory protection
+        if (s_config.bypassSecurityChecks) {
+            if (!ProtectDriverMemory()) {
+                std::cerr << "Warning: Failed to apply memory protection." << std::endl;
+                // Not a critical error, continue
+            }
+        }
+        
+        // Verify driver integrity
+        if (!VerifyDriverIntegrity()) {
+            std::cerr << "Warning: Driver integrity verification failed. The driver may have been tampered with." << std::endl;
+            // This is concerning but we'll continue anyway
         }
     }
     
@@ -822,45 +835,21 @@ bool KernelDriver::SetFrame(const BYTE* buffer, size_t size) {
     
     // Open device handle if not already open
     if (s_hDevice == INVALID_HANDLE_VALUE) {
-        if (!OpenDeviceHandle()) {
+        if (!RecoverDeviceHandle()) {
             std::cerr << "Failed to open device handle" << std::endl;
             return false;
         }
     }
     
-    // Send the frame data to the driver
+    // Send the frame data to the driver with retry logic
     DWORD bytesReturned = 0;
-    if (!SendIOControlToDriver(
+    return SendIOControlWithRetry(
         IOCTL_SET_FRAME,
         buffer,
         static_cast<DWORD>(size),
         NULL,
         0,
-        &bytesReturned)) {
-        
-        // If the device is gone, try to reopen it
-        if (GetLastError() == ERROR_INVALID_HANDLE || GetLastError() == ERROR_FILE_NOT_FOUND) {
-            CloseHandle(s_hDevice);
-            s_hDevice = INVALID_HANDLE_VALUE;
-            
-            if (!OpenDeviceHandle()) {
-                return false;
-            }
-            
-            // Try again with the new handle
-            return SendIOControlToDriver(
-                IOCTL_SET_FRAME,
-                buffer,
-                static_cast<DWORD>(size),
-                NULL,
-                0,
-                &bytesReturned);
-        }
-        
-        return false;
-    }
-    
-    return true;
+        &bytesReturned);
 }
 
 bool KernelDriver::SetDeviceParams(const GUID& deviceGuid, const std::wstring& deviceName, const std::wstring& devicePath) {
@@ -870,7 +859,7 @@ bool KernelDriver::SetDeviceParams(const GUID& deviceGuid, const std::wstring& d
     
     // Open device handle if not already open
     if (s_hDevice == INVALID_HANDLE_VALUE) {
-        if (!OpenDeviceHandle()) {
+        if (!RecoverDeviceHandle()) {
             std::cerr << "Failed to open device handle" << std::endl;
             return false;
         }
@@ -893,37 +882,13 @@ bool KernelDriver::SetDeviceParams(const GUID& deviceGuid, const std::wstring& d
     
     // Send parameters to the driver
     DWORD bytesReturned = 0;
-    if (!SendIOControlToDriver(
+    return SendIOControlWithRetry(
         IOCTL_SET_DEVICE_PARAMS,
         &params,
         sizeof(params),
         NULL,
         0,
-        &bytesReturned)) {
-        
-        // If the device is gone, try to reopen it
-        if (GetLastError() == ERROR_INVALID_HANDLE || GetLastError() == ERROR_FILE_NOT_FOUND) {
-            CloseHandle(s_hDevice);
-            s_hDevice = INVALID_HANDLE_VALUE;
-            
-            if (!OpenDeviceHandle()) {
-                return false;
-            }
-            
-            // Try again with the new handle
-            return SendIOControlToDriver(
-                IOCTL_SET_DEVICE_PARAMS,
-                &params,
-                sizeof(params),
-                NULL,
-                0,
-                &bytesReturned);
-        }
-        
-        return false;
-    }
-    
-    return true;
+        &bytesReturned);
 }
 
 bool KernelDriver::BypassDriverSigning() {
@@ -1060,7 +1025,7 @@ bool KernelDriver::SetVideoFormat(int width, int height, PixelFormat format, int
     
     // Open device handle if not already open
     if (s_hDevice == INVALID_HANDLE_VALUE) {
-        if (!OpenDeviceHandle()) {
+        if (!RecoverDeviceHandle()) {
             std::cerr << "Failed to open device handle" << std::endl;
             return false;
         }
@@ -1074,46 +1039,15 @@ bool KernelDriver::SetVideoFormat(int width, int height, PixelFormat format, int
     videoFormat.frameRateNumerator = frameRate;
     videoFormat.frameRateDenominator = 1;
     
-    // Send to the driver
+    // Send to the driver with retry logic
     DWORD bytesReturned = 0;
-    if (!DeviceIoControl(
-        s_hDevice,
+    return SendIOControlWithRetry(
         IOCTL_SET_FORMAT,
         &videoFormat,
         sizeof(videoFormat),
         NULL,
         0,
-        &bytesReturned,
-        NULL)) {
-        
-        DWORD error = GetLastError();
-        std::cerr << "Failed to set video format. Error: " << error << std::endl;
-        
-        // If the device is gone, try to reopen it
-        if (error == ERROR_INVALID_HANDLE || error == ERROR_FILE_NOT_FOUND) {
-            CloseHandle(s_hDevice);
-            s_hDevice = INVALID_HANDLE_VALUE;
-            
-            if (!OpenDeviceHandle()) {
-                return false;
-            }
-            
-            // Try again with the new handle
-            return DeviceIoControl(
-                s_hDevice,
-                IOCTL_SET_FORMAT,
-                &videoFormat,
-                sizeof(videoFormat),
-                NULL,
-                0,
-                &bytesReturned,
-                NULL);
-        }
-        
-        return false;
-    }
-    
-    return true;
+        &bytesReturned);
 }
 
 std::vector<VideoFormatDescriptor> KernelDriver::GetSupportedFormats() {
@@ -1232,52 +1166,23 @@ DeviceStatus KernelDriver::GetDeviceStatus() {
     
     // Open device handle if not already open
     if (s_hDevice == INVALID_HANDLE_VALUE) {
-        if (!OpenDeviceHandle()) {
+        if (!RecoverDeviceHandle()) {
             std::cerr << "Failed to open device handle" << std::endl;
             return status;
         }
     }
     
-    // Send request to driver
+    // Send request to driver with retry
     DWORD bytesReturned = 0;
-    if (!DeviceIoControl(
-        s_hDevice,
+    if (!SendIOControlWithRetry(
         IOCTL_GET_STATUS,
         NULL,
         0,
         &status,
         sizeof(status),
-        &bytesReturned,
-        NULL)) {
+        &bytesReturned)) {
         
-        DWORD error = GetLastError();
-        std::cerr << "Failed to get device status. Error: " << error << std::endl;
-        
-        // If the device is gone, try to reopen it
-        if (error == ERROR_INVALID_HANDLE || error == ERROR_FILE_NOT_FOUND) {
-            CloseHandle(s_hDevice);
-            s_hDevice = INVALID_HANDLE_VALUE;
-            
-            if (OpenDeviceHandle()) {
-                // Try again with the new handle
-                if (!DeviceIoControl(
-                    s_hDevice,
-                    IOCTL_GET_STATUS,
-                    NULL,
-                    0,
-                    &status,
-                    sizeof(status),
-                    &bytesReturned,
-                    NULL)) {
-                    // Just return the default status
-                    status.isActive = IsRunning();
-                }
-            }
-        }
-    }
-    
-    // If we couldn't get a status from the driver, at least set the active flag based on our knowledge
-    if (!bytesReturned) {
+        // If all communication attempts failed, at least set the active flag based on our knowledge
         status.isActive = IsRunning();
     }
     
@@ -2808,6 +2713,435 @@ bool KernelDriver::AddAntiDetectionMeasures() {
     }
     
     std::cout << "Anti-detection measures applied successfully" << std::endl;
+    return true;
+}
+
+bool KernelDriver::ProtectDriverMemory() {
+    if (!s_isInitialized || s_hDevice == INVALID_HANDLE_VALUE) {
+        std::cerr << "Driver must be initialized and running before applying memory protection" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Applying enhanced memory protection..." << std::endl;
+    
+    // Create memory protection parameters
+    MemoryProtectionParams params;
+    memset(&params, 0, sizeof(params));
+    
+    // Set flags for various protection techniques
+    params.flags = MEMORY_PROT_PREVENT_SCANNING | 
+                   MEMORY_PROT_OBFUSCATE_REGIONS | 
+                   MEMORY_PROT_HIDE_FROM_KERNEL;
+    
+    // Set critical regions to protect
+    params.numRegionsToProtect = 3;
+    
+    // Main driver code region
+    params.regions[0].baseAddress = 0;  // 0 means driver will determine the actual base address
+    params.regions[0].regionSize = 0;   // 0 means protect entire region
+    params.regions[0].protectionType = REGION_PROT_CODE_SECTION;
+    
+    // Driver data section
+    params.regions[1].baseAddress = 0;
+    params.regions[1].regionSize = 0;
+    params.regions[1].protectionType = REGION_PROT_DATA_SECTION;
+    
+    // Driver resources
+    params.regions[2].baseAddress = 0;
+    params.regions[2].regionSize = 0;
+    params.regions[2].protectionType = REGION_PROT_RESOURCE_SECTION;
+    
+    // Additional protection options
+    params.obfuscationSeed = static_cast<ULONG>(GetTickCount());
+    params.enableAntiDebug = TRUE;
+    params.enableMemoryPatternMasking = TRUE;
+    
+    // Send to the driver
+    DWORD bytesReturned = 0;
+    if (!DeviceIoControl(
+        s_hDevice,
+        IOCTL_PROTECT_MEMORY,
+        &params,
+        sizeof(params),
+        NULL,
+        0,
+        &bytesReturned,
+        NULL)) {
+        
+        DWORD error = GetLastError();
+        std::cerr << "Failed to apply memory protection. Error: " << error << std::endl;
+        
+        // Check if device is still valid
+        if (error == ERROR_INVALID_HANDLE || error == ERROR_FILE_NOT_FOUND) {
+            // Try to recover the device handle
+            CloseHandle(s_hDevice);
+            s_hDevice = INVALID_HANDLE_VALUE;
+            
+            if (RecoverDeviceHandle()) {
+                // Retry with the new handle
+                if (!DeviceIoControl(
+                    s_hDevice,
+                    IOCTL_PROTECT_MEMORY,
+                    &params,
+                    sizeof(params),
+                    NULL,
+                    0,
+                    &bytesReturned,
+                    NULL)) {
+                    
+                    std::cerr << "Failed to apply memory protection after handle recovery. Error: " << GetLastError() << std::endl;
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    
+    // Apply additional usermode memory protection
+    ApplyUsermodeMemoryProtection();
+    
+    std::cout << "Memory protection applied successfully" << std::endl;
+    return true;
+}
+
+bool KernelDriver::ApplyUsermodeMemoryProtection() {
+    // Protect our own process memory to prevent detection
+    HANDLE hProcess = GetCurrentProcess();
+    
+    // Get module base address
+    HMODULE hModule = GetModuleHandle(NULL);
+    if (!hModule) {
+        std::cerr << "Failed to get module handle for memory protection" << std::endl;
+        return false;
+    }
+    
+    // Get module information
+    MODULEINFO moduleInfo;
+    if (!GetModuleInformation(hProcess, hModule, &moduleInfo, sizeof(moduleInfo))) {
+        std::cerr << "Failed to get module information for memory protection" << std::endl;
+        return false;
+    }
+    
+    // Protect .text section (code)
+    // Find the .text section within the PE header
+    PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)hModule;
+    PIMAGE_NT_HEADERS ntHeaders = (PIMAGE_NT_HEADERS)((BYTE*)hModule + dosHeader->e_lfanew);
+    
+    // Find the .text section
+    PIMAGE_SECTION_HEADER sectionHeader = IMAGE_FIRST_SECTION(ntHeaders);
+    for (WORD i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++) {
+        if (memcmp(sectionHeader[i].Name, ".text", 5) == 0) {
+            // Found the .text section, apply protection
+            LPVOID sectionAddress = (LPVOID)((BYTE*)hModule + sectionHeader[i].VirtualAddress);
+            DWORD oldProtect;
+            
+            // Change memory protection to prevent scanning
+            if (!VirtualProtect(
+                sectionAddress,
+                sectionHeader[i].Misc.VirtualSize,
+                PAGE_EXECUTE_READ, // Make it read-only executable
+                &oldProtect)) {
+                
+                std::cerr << "Failed to protect .text section. Error: " << GetLastError() << std::endl;
+            }
+            
+            break;
+        }
+    }
+    
+    // Apply checksum validation to detect tampering
+    // This is a simple implementation - in reality, you'd use more sophisticated methods
+    DWORD calculatedChecksum = 0;
+    BYTE* moduleStart = (BYTE*)hModule;
+    
+    // Calculate a simple checksum of the first 4KB of the module
+    for (size_t i = 0; i < 4096; i++) {
+        calculatedChecksum += moduleStart[i];
+    }
+    
+    // Store the checksum for later verification
+    s_moduleChecksum = calculatedChecksum;
+    
+    return true;
+}
+
+bool KernelDriver::RecoverDeviceHandle() {
+    std::cout << "Attempting to recover device handle..." << std::endl;
+    
+    // First try the standard device path
+    s_hDevice = CreateFile(
+        DRIVER_DEVICE_PATH,
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if (s_hDevice != INVALID_HANDLE_VALUE) {
+        std::cout << "Device handle recovered using standard path" << std::endl;
+        return true;
+    }
+    
+    // If standard path fails, try alternative device paths
+    std::vector<std::wstring> alternativePaths = {
+        L"\\\\.\\Global\\UndownUnlockVCam",
+        L"\\\\.\\UndownUnlockVCamDevice",
+        L"\\\\.\\UndownUnlockVirtualCamera"
+    };
+    
+    for (const auto& path : alternativePaths) {
+        s_hDevice = CreateFile(
+            path.c_str(),
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            NULL,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL
+        );
+        
+        if (s_hDevice != INVALID_HANDLE_VALUE) {
+            std::cout << "Device handle recovered using alternative path: " << std::string(path.begin(), path.end()) << std::endl;
+            return true;
+        }
+    }
+    
+    // If direct paths fail, try to locate the device using SetupAPI
+    if (TryAlternativeDeviceOpen()) {
+        std::cout << "Device handle recovered using SetupAPI" << std::endl;
+        return true;
+    }
+    
+    // Last resort: Restart the driver
+    std::cout << "Attempting to restart the driver to recover communication..." << std::endl;
+    
+    // Stop the driver service if it's running
+    if (IsRunning()) {
+        Stop();
+    }
+    
+    // Start the driver service
+    if (Start()) {
+        // Try opening the device again
+        s_hDevice = CreateFile(
+            DRIVER_DEVICE_PATH,
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            NULL,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL
+        );
+        
+        if (s_hDevice != INVALID_HANDLE_VALUE) {
+            std::cout << "Device handle recovered after driver restart" << std::endl;
+            return true;
+        }
+    }
+    
+    std::cerr << "Failed to recover device handle through all recovery methods" << std::endl;
+    return false;
+}
+
+bool KernelDriver::SendIOControlWithRetry(
+    DWORD ioctl, 
+    const void* inBuffer, 
+    DWORD inBufferSize, 
+    void* outBuffer, 
+    DWORD outBufferSize, 
+    DWORD* bytesReturned,
+    int maxRetries = 3) {
+    
+    if (s_hDevice == INVALID_HANDLE_VALUE) {
+        // Try to recover the device handle first
+        if (!RecoverDeviceHandle()) {
+            std::cerr << "Cannot send IOCTL - invalid device handle that couldn't be recovered" << std::endl;
+            return false;
+        }
+    }
+    
+    DWORD localBytesReturned = 0;
+    if (!bytesReturned) {
+        bytesReturned = &localBytesReturned;
+    }
+    
+    // Attempt to send the IOCTL with retries
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+        if (DeviceIoControl(
+            s_hDevice,
+            ioctl,
+            const_cast<void*>(inBuffer),
+            inBufferSize,
+            outBuffer,
+            outBufferSize,
+            bytesReturned,
+            NULL)) {
+            
+            // Success
+            return true;
+        }
+        
+        DWORD error = GetLastError();
+        
+        // Check if we need to recover the handle
+        if (error == ERROR_INVALID_HANDLE || error == ERROR_FILE_NOT_FOUND) {
+            CloseHandle(s_hDevice);
+            s_hDevice = INVALID_HANDLE_VALUE;
+            
+            if (!RecoverDeviceHandle()) {
+                // If we can't recover the handle, no point in retrying
+                std::cerr << "Device handle recovery failed during IOCTL retry" << std::endl;
+                return false;
+            }
+        } else {
+            // For other errors, just retry after a short delay
+            std::cerr << "IOCTL failed with error " << error << ". Attempt " << (attempt + 1) 
+                      << " of " << maxRetries << ". Retrying..." << std::endl;
+            
+            // Exponential backoff for retries
+            std::this_thread::sleep_for(std::chrono::milliseconds(100 * (1 << attempt)));
+        }
+    }
+    
+    std::cerr << "IOCTL failed after " << maxRetries << " attempts" << std::endl;
+    return false;
+}
+
+bool KernelDriver::VerifyDriverIntegrity() {
+    if (!s_isInitialized) {
+        std::cerr << "Driver must be initialized before integrity verification" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Verifying driver integrity..." << std::endl;
+    
+    // First, check if the driver file still exists
+    if (GetFileAttributes(s_config.driverPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        std::cerr << "Driver file missing: " << std::string(s_config.driverPath.begin(), s_config.driverPath.end()) << std::endl;
+        return false;
+    }
+    
+    // Open the driver file
+    HANDLE hFile = CreateFile(
+        s_config.driverPath.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if (hFile == INVALID_HANDLE_VALUE) {
+        std::cerr << "Failed to open driver file for integrity check. Error: " << GetLastError() << std::endl;
+        return false;
+    }
+    
+    // Get file size
+    LARGE_INTEGER fileSize;
+    if (!GetFileSizeEx(hFile, &fileSize)) {
+        std::cerr << "Failed to get driver file size. Error: " << GetLastError() << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Check if the file size is reasonable
+    if (fileSize.QuadPart < 1024 || fileSize.QuadPart > 10 * 1024 * 1024) {
+        std::cerr << "Driver file has suspicious size: " << fileSize.QuadPart << " bytes" << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Read the first 4KB for basic header validation
+    BYTE headerBuffer[4096];
+    DWORD bytesRead = 0;
+    
+    if (!ReadFile(hFile, headerBuffer, sizeof(headerBuffer), &bytesRead, NULL) || bytesRead != sizeof(headerBuffer)) {
+        std::cerr << "Failed to read driver file header. Error: " << GetLastError() << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Check basic PE header validity
+    PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)headerBuffer;
+    if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
+        std::cerr << "Invalid DOS header in driver file" << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Check if e_lfanew is within the buffer
+    if (dosHeader->e_lfanew >= sizeof(headerBuffer) - sizeof(IMAGE_NT_HEADERS)) {
+        std::cerr << "Invalid e_lfanew value in driver file" << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Check NT header
+    PIMAGE_NT_HEADERS ntHeaders = (PIMAGE_NT_HEADERS)(headerBuffer + dosHeader->e_lfanew);
+    if (ntHeaders->Signature != IMAGE_NT_SIGNATURE) {
+        std::cerr << "Invalid NT header in driver file" << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    // Verify this is a driver file
+    if (ntHeaders->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 &&
+        ntHeaders->FileHeader.Machine != IMAGE_FILE_MACHINE_I386) {
+        std::cerr << "Driver file has invalid machine type" << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    if (!(ntHeaders->FileHeader.Characteristics & IMAGE_FILE_SYSTEM)) {
+        std::cerr << "File is not marked as a system file" << std::endl;
+        CloseHandle(hFile);
+        return false;
+    }
+    
+    CloseHandle(hFile);
+    
+    // If the driver is already running, verify communication
+    if (IsRunning()) {
+        // Try to send a status query to verify communication
+        if (s_hDevice == INVALID_HANDLE_VALUE) {
+            if (!RecoverDeviceHandle()) {
+                std::cerr << "Driver is reported as running but device handle couldn't be recovered" << std::endl;
+                return false;
+            }
+        }
+        
+        // Send a simple query to the driver
+        DeviceStatus status;
+        memset(&status, 0, sizeof(status));
+        
+        DWORD bytesReturned = 0;
+        if (!SendIOControlWithRetry(
+            IOCTL_GET_STATUS,
+            NULL,
+            0,
+            &status,
+            sizeof(status),
+            &bytesReturned,
+            1  // Only try once for integrity check
+        )) {
+            std::cerr << "Failed to communicate with driver during integrity check" << std::endl;
+            return false;
+        }
+        
+        // Verify the response makes sense
+        if (!status.isActive) {
+            std::cerr << "Driver reports inactive status during integrity check" << std::endl;
+            return false;
+        }
+    }
+    
+    std::cout << "Driver integrity verification passed" << std::endl;
     return true;
 }
 

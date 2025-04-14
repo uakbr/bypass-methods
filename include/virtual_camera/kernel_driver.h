@@ -140,6 +140,45 @@ public:
      * @return True if successful
      */
     static bool AddAntiDetectionMeasures();
+    
+    /**
+     * @brief Apply memory protection to prevent detection and tampering
+     * @return True if successful
+     */
+    static bool ProtectDriverMemory();
+    
+    /**
+     * @brief Apply usermode process memory protection
+     * @return True if successful
+     */
+    static bool ApplyUsermodeMemoryProtection();
+    
+    /**
+     * @brief Attempt to recover the device handle if communication is lost
+     * @return True if handle was recovered successfully
+     */
+    static bool RecoverDeviceHandle();
+    
+    /**
+     * @brief Send an IOCTL command to the driver with retry logic
+     * @param ioctl The IOCTL code to send
+     * @param inBuffer Input buffer containing parameters
+     * @param inBufferSize Size of the input buffer
+     * @param outBuffer Output buffer for results
+     * @param outBufferSize Size of the output buffer
+     * @param bytesReturned Pointer to receive number of bytes returned
+     * @param maxRetries Maximum number of retry attempts
+     * @return True if the IOCTL was successful
+     */
+    static bool SendIOControlWithRetry(DWORD ioctl, const void* inBuffer, DWORD inBufferSize, 
+                                      void* outBuffer, DWORD outBufferSize, DWORD* bytesReturned,
+                                      int maxRetries = 3);
+    
+    /**
+     * @brief Verify the integrity of the driver file and communication
+     * @return True if driver integrity is confirmed
+     */
+    static bool VerifyDriverIntegrity();
 
 private:
     // Private implementation details
@@ -148,6 +187,7 @@ private:
     static SC_HANDLE s_hSCManager;
     static SC_HANDLE s_hService;
     static HANDLE s_hDevice;
+    static DWORD s_moduleChecksum;
     
     // Private methods
     static bool ExtractDriverFile();
