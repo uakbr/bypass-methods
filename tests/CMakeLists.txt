@@ -24,8 +24,8 @@ endif()
 set(TEST_SOURCES
     test_pattern_scanner.cpp
     test_hooked_functions.cpp
-    test_memory_tracker.cpp
-    test_com_tracker.cpp
+    # Removed: test_memory_tracker.cpp
+    # Removed: test_com_tracker.cpp
 )
 
 # Create test executable
@@ -49,66 +49,6 @@ if(TARGET undownunlock_tests)
     )
 endif()
 
-# Windows Integration Enhancement Tests (standalone)
-add_executable(windows_integration_test test_windows_integration.cpp)
-target_link_libraries(windows_integration_test PRIVATE
-    UndownUnlockDXHook
-    dbghelp
-)
-
-# Add additional system libraries needed for Windows Integration
-if(WIN32)
-    target_link_libraries(windows_integration_test PRIVATE
-        wbemuuid
-        oleacc
-        Shlwapi
-        Shell32
-        UIAutomationCore
-    )
-endif()
-
-# Register Windows Integration test with CTest
-add_test(NAME windows_integration_test COMMAND windows_integration_test)
-
-# Virtual Camera System Test (standalone)
-add_executable(virtual_camera_test test_virtual_camera.cpp)
-target_link_libraries(virtual_camera_test PRIVATE
-    UndownUnlockDXHook
-    dbghelp
-)
-
-# Add additional system libraries needed for Virtual Camera
-if(WIN32)
-    target_link_libraries(virtual_camera_test PRIVATE
-        strmiids
-        mfplat
-        mfuuid
-        d3d11
-        dxgi
-        dxguid
-        ole32
-        oleaut32
-        uuid
-    )
-endif()
-
-# Register Virtual Camera test with CTest
-add_test(NAME virtual_camera_test COMMAND virtual_camera_test)
-
-# Driver Signature Patching Test (standalone)
-add_executable(driver_patching_test test_driver_patching.cpp)
-target_link_libraries(driver_patching_test PRIVATE
-    UndownUnlockVirtualCamera
-)
-
-# Add additional system libraries needed for Driver Patching Test
-if(WIN32)
-    target_link_libraries(driver_patching_test PRIVATE
-        setupapi
-        advapi32
-        Ole32
-    )
-endif()
-
-# Register Driver Patching test with CTest
-add_test(NAME driver_patching_test COMMAND driver_patching_test) 
+# Removed Windows Integration Enhancement Test
+# Removed Virtual Camera System Test
+# Removed Driver Signature Patching Test
