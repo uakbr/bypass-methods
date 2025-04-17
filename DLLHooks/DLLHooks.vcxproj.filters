@@ -22,6 +22,36 @@
     <Filter Include="Header Files\hooks">
       <UniqueIdentifier>{C5DA6AB9-F800-4c08-8B7A-83BB121AAD04}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\com_hooks">
+      <UniqueIdentifier>{0544F0F6-E339-49A5-AFE5-A745F42C89E1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\memory">
+      <UniqueIdentifier>{4D2998D4-9E58-422A-87A1-64D96F149A73}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\frame">
+      <UniqueIdentifier>{19C266A0-685C-482D-A389-FDF2D284B5DA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\shared">
+      <UniqueIdentifier>{D1D41F39-F478-48C5-A375-27A7903399C7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\signatures">
+      <UniqueIdentifier>{E2E853E4-D1E7-4127-99A5-4369A5C139BD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\com_hooks">
+      <UniqueIdentifier>{4F835E6A-16A2-4B10-9A68-A1F6D4B3A6E7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\memory">
+      <UniqueIdentifier>{52965724-3D2C-4D9F-883F-E950B17F4879}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\frame">
+      <UniqueIdentifier>{4A9A623A-9E07-4ED9-8A5E-5C951F2E7F9F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\shared">
+      <UniqueIdentifier>{6C5C75C1-A9F6-4137-A71F-103C8D1E8E5A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\signatures">
+      <UniqueIdentifier>{D5D22E9B-AF2B-4E1D-8AE4-911B34128631}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -42,12 +72,30 @@
     <ClInclude Include="..\include\hooks\hook_utils.h">
       <Filter>Header Files\hooks</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\com_hooks\factory_hooks.h">
+      <Filter>Header Files\com_hooks</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\memory\pattern_scanner.h">
+      <Filter>Header Files\memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dx_hook_core.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\frame_extractor.h">
+      <Filter>Header Files\frame</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\shared_memory_transport.h">
+      <Filter>Header Files\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\signatures\dx_signatures.h">
+      <Filter>Header Files\signatures</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\dllmain_refactored.cpp">
+    <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\hooks\windows_api\windows_api_hooks.cpp">
@@ -61,6 +109,33 @@
     </ClCompile>
     <ClCompile Include="..\src\hooks\windows_api\hook_utils.cpp">
       <Filter>Source Files\hooks\windows_api</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\com_hooks\factory_hooks.cpp">
+      <Filter>Source Files\com_hooks</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\memory\memory_scanner.cpp">
+      <Filter>Source Files\memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\memory\pattern_scanner.cpp">
+      <Filter>Source Files\memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hooks\dx_hook_core.cpp">
+      <Filter>Source Files\hooks</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hooks\swap_chain_hook.cpp">
+      <Filter>Source Files\hooks</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\frame\frame_extractor.cpp">
+      <Filter>Source Files\frame</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shared\shared_memory_transport.cpp">
+      <Filter>Source Files\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\signatures\dx_signatures.cpp">
+      <Filter>Source Files\signatures</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\signatures\lockdown_signatures.cpp">
+      <Filter>Source Files\signatures</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

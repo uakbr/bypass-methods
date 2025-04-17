@@ -143,19 +143,34 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\com_hooks\factory_hooks.h" />
     <ClInclude Include="..\include\hooks\hook_utils.h" />
     <ClInclude Include="..\include\hooks\hooked_functions.h" />
     <ClInclude Include="..\include\hooks\keyboard_hook.h" />
     <ClInclude Include="..\include\hooks\windows_api_hooks.h" />
+    <ClInclude Include="..\include\dx_hook_core.h" />
+    <ClInclude Include="..\include\frame_extractor.h" />
+    <ClInclude Include="..\include\shared_memory_transport.h" />
+    <ClInclude Include="..\include\signatures\dx_signatures.h" />
+    <ClInclude Include="..\include\memory\pattern_scanner.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\dllmain_refactored.cpp" />
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="..\src\com_hooks\factory_hooks.cpp" />
     <ClCompile Include="..\src\hooks\windows_api\hook_utils.cpp" />
     <ClCompile Include="..\src\hooks\windows_api\hooked_functions.cpp" />
     <ClCompile Include="..\src\hooks\windows_api\keyboard_hook.cpp" />
     <ClCompile Include="..\src\hooks\windows_api\windows_api_hooks.cpp" />
+    <ClCompile Include="..\src\hooks\dx_hook_core.cpp" />
+    <ClCompile Include="..\src\hooks\swap_chain_hook.cpp" />
+    <ClCompile Include="..\src\memory\memory_scanner.cpp" />
+    <ClCompile Include="..\src\memory\pattern_scanner.cpp" />
+    <ClCompile Include="..\src\frame\frame_extractor.cpp" />
+    <ClCompile Include="..\src\shared\shared_memory_transport.cpp" />
+    <ClCompile Include="..\src\signatures\dx_signatures.cpp" />
+    <ClCompile Include="..\src\signatures\lockdown_signatures.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
