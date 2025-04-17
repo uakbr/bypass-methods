@@ -39,4 +39,207 @@ if(USE_LZ4)
         if(LZ4_LIBRARY AND LZ4_INCLUDE_DIR)
             message(STATUS "Found system LZ4: ${LZ4_LIBRARY}")
             add_compile_definitions(USE_LZ4)
-            include_directories(${LZ4_INCLUDE_DIR})\n            set(COMPRESSION_LIBS ${COMPRESSION_LIBS} ${LZ4_LIBRARY})\n        else()\n            message(WARNING "LZ4 not found, disabling LZ4 compression support")\n            set(USE_LZ4 OFF)\n        endif()\n    endif()\nendif()\n\nif(USE_ZSTD)\n    find_package(zstd CONFIG QUIET)\n    if(zstd_FOUND)\n        message(STATUS "Zstandard found via find_package")\n        add_compile_definitions(USE_ZSTD)\n    else()\n        message(STATUS "Zstandard not found via find_package, checking for system library")\n        find_library(ZSTD_LIBRARY NAMES zstd libzstd)\n        find_path(ZSTD_INCLUDE_DIR NAMES zstd.h)\n        if(ZSTD_LIBRARY AND ZSTD_INCLUDE_DIR)\n            message(STATUS "Found system Zstandard: ${ZSTD_LIBRARY}")\n            add_compile_definitions(USE_ZSTD)\n            include_directories(${ZSTD_INCLUDE_DIR})\n            set(COMPRESSION_LIBS ${COMPRESSION_LIBS} ${ZSTD_LIBRARY})\n        else()\n            message(WARNING "Zstandard not found, disabling ZSTD compression support")\n            set(USE_ZSTD OFF)\n        endif()\n    endif()\nendif()\n\n# Define source files for the DLL hooks library\nset(DLL_HOOKS_SOURCES\n    DLLHooks/dllmain.cpp # Updated path\n    src/hooks/windows_api/windows_api_hooks.cpp\n    src/hooks/windows_api/hooked_functions.cpp\n    src/hooks/windows_api/keyboard_hook.cpp\n    src/hooks/windows_api/hook_utils.cpp\n    src/hooks/dx_hook_core.cpp\n    src/hooks/swap_chain_hook.cpp\n    src/memory/memory_scanner.cpp\n    src/memory/pattern_scanner.cpp\n    # Removed: src/memory/memory_tracker.cpp\n    src/frame/frame_extractor.cpp\n    src/shared/shared_memory_transport.cpp\n    src/signatures/dx_signatures.cpp\n    src/signatures/lockdown_signatures.cpp\n    src/com_hooks/factory_hooks.cpp\n    # Removed: src/com_hooks/com_tracker.cpp\n)\n\n# Define source files for the test client\nset(TEST_CLIENT_SOURCES\n    src/test_client.cpp\n)\n\n# Removed VIRTUAL_CAMERA_SOURCES set\n# Removed VCAM_TEST_SOURCES set\n\n# Add the DLL hooks library\nadd_library(UndownUnlockDXHook SHARED ${DLL_HOOKS_SOURCES})\n\n# Set up the DLL properties\ntarget_compile_definitions(UndownUnlockDXHook PRIVATE\n    WIN32\n    _WINDOWS\n    _USRDLL\n)\n\n# Add the test client executable\nadd_executable(UndownUnlockTestClient ${TEST_CLIENT_SOURCES})\n\n# Removed UndownUnlockVirtualCamera library\n# Removed UndownUnlockVCamTest executable\n\n# Link the test client with necessary libraries\ntarget_link_libraries(UndownUnlockTestClient PRIVATE\n    d3d11\n    dxgi\n    windowscodecs\n    ${COMPRESSION_LIBS}\n)\n\n# Link the DLL hooks with necessary libraries\ntarget_link_libraries(UndownUnlockDXHook PRIVATE\n    d3d11\n    dxgi\n    windowscodecs\n    dbghelp\n    ${COMPRESSION_LIBS}\n)\n\n# Removed linking for UndownUnlockVirtualCamera\n# Removed linking for UndownUnlockVCamTest\n\n# Conditionally link LZ4 and ZSTD using find_package results\nif(USE_LZ4 AND lz4_FOUND)\n    target_link_libraries(UndownUnlockDXHook PRIVATE lz4::lz4)\n    target_link_libraries(UndownUnlockTestClient PRIVATE lz4::lz4)\nendif()\n\nif(USE_ZSTD AND zstd_FOUND)\n    target_link_libraries(UndownUnlockDXHook PRIVATE zstd::libzstd_shared)\n    target_link_libraries(UndownUnlockTestClient PRIVATE zstd::libzstd_shared)\nendif()\n\n# Removed virtual camera driver resource embedding section\n\n# Installation rules\ninstall(TARGETS UndownUnlockDXHook UndownUnlockTestClient\n    RUNTIME DESTINATION bin\n    LIBRARY DESTINATION lib\n    ARCHIVE DESTINATION lib\n)\n\n# Create a bin directory (kept in case needed for other binaries later)\ninstall(DIRECTORY DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/bin)\n\n# Copy the Python injector script to the output directory\nconfigure_file(\n    ${CMAKE_SOURCE_DIR}/src/test_injector.py\n    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test_injector.py\n    COPYONLY\n)\n\n# Add tests if testing is enabled\noption(BUILD_TESTING \"Build tests\" ON)\nif(BUILD_TESTING)\n    enable_testing()\n    add_subdirectory(tests)\n    \n    # Removed add_test for VirtualCameraTest\nendif()\n\n# Print configuration summary\nmessage(STATUS \"CMAKE_GENERATOR: ${CMAKE_GENERATOR}\")\nmessage(STATUS \"CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}\")\nmessage(STATUS \"CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}\")\nmessage(STATUS \"CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}\")\nmessage(STATUS \"CMAKE_CXX_COMPILER_VERSION: ${CMAKE_CXX_COMPILER_VERSION}\")\nmessage(STATUS \"CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}\")\nmessage(STATUS \"CMAKE_EXE_LINKER_FLAGS: ${CMAKE_EXE_LINKER_FLAGS}\")\nmessage(STATUS \"CMAKE_SHARED_LINKER_FLAGS: ${CMAKE_SHARED_LINKER_FLAGS}\")\nmessage(STATUS \"Compression: LZ4=${USE_LZ4}, ZSTD=${USE_ZSTD}\")\n===
+            include_directories(${LZ4_INCLUDE_DIR})
+            set(COMPRESSION_LIBS ${COMPRESSION_LIBS} ${LZ4_LIBRARY})
+        else()
+            message(WARNING "LZ4 not found, disabling LZ4 compression support")
+            set(USE_LZ4 OFF)
+        endif()
+    endif()
+endif()
+
+if(USE_ZSTD)
+    find_package(zstd CONFIG QUIET)
+    if(zstd_FOUND)
+        message(STATUS "Zstandard found via find_package")
+        add_compile_definitions(USE_ZSTD)
+    else()
+        message(STATUS "Zstandard not found via find_package, checking for system library")
+        find_library(ZSTD_LIBRARY NAMES zstd libzstd)
+        find_path(ZSTD_INCLUDE_DIR NAMES zstd.h)
+        if(ZSTD_LIBRARY AND ZSTD_INCLUDE_DIR)
+            message(STATUS "Found system Zstandard: ${ZSTD_LIBRARY}")
+            add_compile_definitions(USE_ZSTD)
+            include_directories(${ZSTD_INCLUDE_DIR})
+            set(COMPRESSION_LIBS ${COMPRESSION_LIBS} ${ZSTD_LIBRARY})
+        else()
+            message(WARNING "Zstandard not found, disabling ZSTD compression support")
+            set(USE_ZSTD OFF)
+        endif()
+    endif()
+endif()
+
+# Define source files for the DLL hooks library
+set(DLL_HOOKS_SOURCES
+    # Using refactored DLL main
+    src/dllmain_refactored.cpp
+    src/hooks/windows_api/windows_api_hooks.cpp
+    src/hooks/windows_api/hooked_functions.cpp
+    src/hooks/windows_api/keyboard_hook.cpp
+    src/hooks/windows_api/hook_utils.cpp
+    src/hooks/dx_hook_core.cpp
+    src/hooks/swap_chain_hook.cpp
+    src/memory/memory_scanner.cpp
+    src/memory/pattern_scanner.cpp
+    # src/memory/memory_tracker.cpp - REMOVED
+    src/frame/frame_extractor.cpp
+    src/shared/shared_memory_transport.cpp
+    src/signatures/dx_signatures.cpp
+    src/signatures/lockdown_signatures.cpp
+    src/com_hooks/factory_hooks.cpp
+    # src/com_hooks/com_tracker.cpp - REMOVED
+)
+
+# Define source files for the test client
+set(TEST_CLIENT_SOURCES
+    src/test_client.cpp
+)
+
+# Define source files for the virtual camera library
+set(VIRTUAL_CAMERA_SOURCES
+    src/virtual_camera/virtual_camera.cpp
+    src/virtual_camera/directshow_filter.cpp
+    src/virtual_camera/kernel_driver.cpp
+    src/virtual_camera/facial_tracking.cpp
+)
+
+# Define source files for the virtual camera test
+set(VCAM_TEST_SOURCES
+    src/tests/test_virtual_camera.cpp
+)
+
+
+# Add the DLL hooks library
+add_library(UndownUnlockDXHook SHARED ${DLL_HOOKS_SOURCES})
+
+# Set up the DLL properties
+target_compile_definitions(UndownUnlockDXHook PRIVATE
+    WIN32
+    _WINDOWS
+    _USRDLL
+)
+
+# Add the test client executable
+add_executable(UndownUnlockTestClient ${TEST_CLIENT_SOURCES})
+
+# Add the virtual camera library
+add_library(UndownUnlockVirtualCamera STATIC ${VIRTUAL_CAMERA_SOURCES})
+
+# Add the virtual camera test executable
+add_executable(UndownUnlockVCamTest ${VCAM_TEST_SOURCES})
+
+
+# Link the test client with necessary libraries
+target_link_libraries(UndownUnlockTestClient PRIVATE
+    d3d11
+    dxgi
+    windowscodecs
+    ${COMPRESSION_LIBS}
+)
+
+# Link the DLL hooks with necessary libraries
+target_link_libraries(UndownUnlockDXHook PRIVATE
+    d3d11
+    dxgi
+    windowscodecs
+    # dbghelp - REMOVED
+    ${COMPRESSION_LIBS}
+)
+
+# Link the virtual camera library with necessary libraries
+target_link_libraries(UndownUnlockVirtualCamera PRIVATE
+    strmiids # DirectShow base classes
+    mfplat   # Media Foundation platform
+    mfuuid   # Media Foundation GUIDs
+    shlwapi  # Shell Lightweight Utility Library
+)
+
+# Link the virtual camera test with the virtual camera library
+target_link_libraries(UndownUnlockVCamTest PRIVATE
+    UndownUnlockVirtualCamera
+    ws2_32 # For networking if needed
+    Setupapi
+    cfgmgr32
+    bcrypt
+    wintrust
+    crypt32
+    Psapi
+)
+
+
+# Conditionally link LZ4 and ZSTD using find_package results
+if(USE_LZ4 AND lz4_FOUND)
+    target_link_libraries(UndownUnlockDXHook PRIVATE lz4::lz4)
+    target_link_libraries(UndownUnlockTestClient PRIVATE lz4::lz4)
+endif()
+
+if(USE_ZSTD AND zstd_FOUND)
+    target_link_libraries(UndownUnlockDXHook PRIVATE zstd::libzstd_shared)
+    target_link_libraries(UndownUnlockTestClient PRIVATE zstd::libzstd_shared)
+endif()
+
+# Add the kernel driver source as a resource to the DLL
+# Note: This requires a resource compiler (rc.exe) in the toolchain
+# This part is complex and platform-specific. Assuming rc.exe is available.
+if(WIN32)
+    set(RC_FILE ${CMAKE_CURRENT_BINARY_DIR}/driver_resource.rc)
+    set(RES_FILE ${CMAKE_CURRENT_BINARY_DIR}/driver_resource.res)
+
+    file(WRITE ${RC_FILE} "UNDOWNUNLOCK_VCAM_DRIVER RCDATA \"${CMAKE_SOURCE_DIR}/src/virtual_camera/kernel_driver_source.c\"\n")
+
+    add_custom_command(
+        OUTPUT ${RES_FILE}
+        COMMAND ${CMAKE_RC_COMPILER} /fo ${RES_FILE} ${RC_FILE}
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/virtual_camera/kernel_driver_source.c ${RC_FILE}
+        COMMENT "Compiling kernel driver resource"
+    )
+
+    target_sources(UndownUnlockDXHook PRIVATE ${RES_FILE})
+endif()
+
+
+# Installation rules
+install(TARGETS UndownUnlockDXHook UndownUnlockTestClient UndownUnlockVCamTest
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+# Create a bin directory (if not already created)
+install(DIRECTORY DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/bin)
+
+
+# Copy the Python injector script to the output directory
+# Assuming the script is in python/tools/injector.py now
+configure_file(
+    ${CMAKE_SOURCE_DIR}/python/tools/injector.py
+    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/injector.py
+    COPYONLY
+)
+
+# Add tests if testing is enabled
+option(BUILD_TESTING "Build tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+
+    # Add test for virtual camera (if built)
+    add_test(NAME VirtualCameraTest COMMAND UndownUnlockVCamTest)
+    if(TARGET VirtualCameraTest)
+        set_tests_properties(VirtualCameraTest PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+        )
+    endif()
+endif()
+
+
+# Print configuration summary
+message(STATUS "CMAKE_GENERATOR: ${CMAKE_GENERATOR}")
+message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
+message(STATUS "CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")
+message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
+message(STATUS "CMAKE_CXX_COMPILER_VERSION: ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
+message(STATUS "CMAKE_EXE_LINKER_FLAGS: ${CMAKE_EXE_LINKER_FLAGS}")
+message(STATUS "CMAKE_SHARED_LINKER_FLAGS: ${CMAKE_SHARED_LINKER_FLAGS}")
+message(STATUS "Compression: LZ4=${USE_LZ4}, ZSTD=${USE_ZSTD}")

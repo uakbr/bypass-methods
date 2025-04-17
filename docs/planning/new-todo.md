@@ -22,9 +22,8 @@ UndownUnlock is a sophisticated DirectX and Windows API hooking framework design
 
 ### 1.3 Memory Management
 - [x] Replace raw pointers with appropriate smart pointers
-- [ ] Implement proper COM interface reference counting
 - [x] Add RAII wrappers for Windows handles
-- [ ] Implement basic memory leak detection
+- [ ] Implement advanced memory management utilities (e.g., custom allocators)
 
 ### 1.4 Build System Fixes
 - [x] **URGENT**: Fix `set_tests_properties` error in main CMakeLists.txt line 42
@@ -51,7 +50,7 @@ UndownUnlock is a sophisticated DirectX and Windows API hooking framework design
 
 ### 2.3 Shared Memory Transport Optimization
 - [x] Implement basic shared memory transport
-- [ ] Optimize ring buffer with cache-aligned structures
+- [x] Optimize ring buffer with cache-aligned structures
 - [ ] Add compression support for high-resolution frames
 - [ ] Implement adaptive buffer sizing based on frame size
 - [ ] Replace SRWLock with more efficient synchronization primitives
@@ -61,7 +60,7 @@ UndownUnlock is a sophisticated DirectX and Windows API hooking framework design
 ### 3.1 Memory Scanner Improvements
 - [x] Implement basic Boyer-Moore-Horspool algorithm
 - [x] Add support for wildcard patterns
-- [ ] Optimize pattern matching engine for better performance
+- [x] Optimize pattern matching engine for better performance
 - [ ] Add IDA-style signature parsing
 - [ ] Implement multi-pattern scanning in a single pass
 - [ ] Add PE section analysis for targeted scanning
@@ -109,8 +108,6 @@ UndownUnlock is a sophisticated DirectX and Windows API hooking framework design
 ## In-Progress Tasks (Current Focus)
 
 ### Currently Working On
-- Implementing COM interface reference counting
-- Optimizing pattern matching engine for better performance
 - Creating cross-platform compatibility fixes
 
 ### Next Steps
@@ -130,7 +127,6 @@ UndownUnlock is a sophisticated DirectX and Windows API hooking framework design
 ### COM Interface Detection
 - [x] Hook CreateDXGIFactory and related entry points
 - [x] Implement interface tracking for SwapChain creation
-- [x] Create COM reference counting management
 - [x] Build interface pointer validation
 
 ### Frame Extraction
@@ -173,8 +169,6 @@ UndownUnlock is a sophisticated DirectX and Windows API hooking framework design
 - [ ] Add plugin system for custom hooks
 - [ ] Develop cross-platform support where feasible 
 
-
-
 # UndownUnlock Project To-Do List
 
 ## Immediate Priorities (Completed)
@@ -195,7 +189,7 @@ UndownUnlock is a sophisticated DirectX and Windows API hooking framework design
   - ⬜ Add Shell Extension approach for window management
   - ⬜ Optimize for different Windows versions (10/11)
   - ⬜ Add better handling of Windows security mechanisms
-  - ⬜ Files to modify: `src/hooks/windows_api_hooks.cpp`, `include/hooks/windows_api_hooks.h`
+  - ⬜ Files to modify: `src/hooks/windows_api/windows_api_hooks.cpp`, `include/hooks/windows_api/windows_api_hooks.h`
 
 ## New High-Impact Priorities (From Future Extensions)
 - ⬜ **Virtual Camera System** (Very High Priority)

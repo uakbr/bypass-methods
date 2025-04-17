@@ -15,7 +15,7 @@ if(NOT GTest_FOUND)
     FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG release-1.11.0
+        GIT_TAG release-1.11.0 # Or another appropriate tag/commit
     )
     FetchContent_MakeAvailable(googletest)
 endif()
@@ -24,8 +24,9 @@ endif()
 set(TEST_SOURCES
     test_pattern_scanner.cpp
     test_hooked_functions.cpp
-    # Removed: test_memory_tracker.cpp
-    # Removed: test_com_tracker.cpp
+    # test_memory_tracker.cpp - REMOVED
+    # test_com_tracker.cpp - REMOVED
+    test_windows_integration.cpp # Keep windows integration test
 )
 
 # Create test executable
@@ -36,7 +37,7 @@ target_link_libraries(undownunlock_tests PRIVATE
     GTest::gtest
     GTest::gtest_main
     UndownUnlockDXHook
-    dbghelp
+    # dbghelp - REMOVED
 )
 
 # Register tests with CTest
@@ -45,10 +46,6 @@ add_test(NAME undownunlock_tests COMMAND undownunlock_tests)
 # Set working directory for tests
 if(TARGET undownunlock_tests)
     set_tests_properties(undownunlock_tests PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/bin" # Changed to bin directory
     )
 endif()
-
-# Removed Windows Integration Enhancement Test
-# Removed Virtual Camera System Test
-# Removed Driver Signature Patching Test

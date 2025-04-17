@@ -52,6 +52,12 @@
     <Filter Include="Header Files\signatures">
       <UniqueIdentifier>{D5D22E9B-AF2B-4E1D-8AE4-911B34128631}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\virtual_camera">
+      <UniqueIdentifier>{c98f218d-304c-43c3-97ab-4e60d84f1c80}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\virtual_camera">
+      <UniqueIdentifier>{d87d5e36-9150-4435-912b-5178a4962ed6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -90,12 +96,27 @@
     <ClInclude Include="..\include\signatures\dx_signatures.h">
       <Filter>Header Files\signatures</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\virtual_camera\directshow_filter.h">
+      <Filter>Header Files\virtual_camera</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\virtual_camera\facial_tracking.h">
+      <Filter>Header Files\virtual_camera</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\virtual_camera\kernel_driver.h">
+      <Filter>Header Files\virtual_camera</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\virtual_camera\kernel_driver_ioctl.h">
+      <Filter>Header Files\virtual_camera</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\virtual_camera\virtual_camera.h">
+      <Filter>Header Files\virtual_camera</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dllmain.cpp">
+    <ClCompile Include="..\src\dllmain_refactored.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\hooks\windows_api\windows_api_hooks.cpp">
@@ -137,5 +158,22 @@
     <ClCompile Include="..\src\signatures\lockdown_signatures.cpp">
       <Filter>Source Files\signatures</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\virtual_camera\directshow_filter.cpp">
+      <Filter>Source Files\virtual_camera</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\virtual_camera\facial_tracking.cpp">
+      <Filter>Source Files\virtual_camera</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\virtual_camera\kernel_driver.cpp">
+      <Filter>Source Files\virtual_camera</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\virtual_camera\virtual_camera.cpp">
+      <Filter>Source Files\virtual_camera</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="driver_resource.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>
