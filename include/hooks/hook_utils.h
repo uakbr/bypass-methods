@@ -1,43 +1,20 @@
 #pragma once
 
 #include <Windows.h>
-#include <string>
-#include <memory>
 #include <vector>
-#include <functional>
+#include <string>
+#include <unordered_map>
+#include <mutex> // Include mutex for thread safety
 
 namespace UndownUnlock {
 namespace WindowsHook {
 
-/**
- * @brief Defines the processor architecture
- */
-enum class Architecture {
-    Unknown,
-    X86,
-    X64,
-    ARM,
-    ARM64
-};
-
-/**
- * @brief Status of a hook
- */
-enum class HookStatus {
-    NotInstalled,
-    Installed,
-    Compromised,
-    Disabled
-};
-
-/**
- * @brief Configuration for hook installation
- */
-struct HookConfig {
-    bool enableSelfHealing = false;    // Automatically reinstall if tampering detected
-    bool enableVerification = true;    // Periodically verify integrity
-    bool suspendThreads = false;       // Suspend threads during installation
-    size_t verificationInterval = 5000; // Milliseconds between integrity checks
+// Structure to hold information about an installed hook
+struct HookInfo {
+    void* targetFunction = nullptr;
+    void* hookFunction = nullptr;
+    BYTE originalBytes[5] = {0}; // Standard 5 bytes for x86/x64 JMP hook
+    bool isActive = false;
 };
 
 /**
@@ -49,46 +26,25 @@ public:
      * @brief Install a hook by modifying the target function with a JMP instruction
      * @param targetFunction Pointer to the function to hook
      * @param hookFunction Pointer to the replacement function
-     * @param originalBytes Buffer to store the original bytes for later restoration
-     * @param config Optional configuration for the hook
-     * @return True if the hook was successfully installed
+     * @param hookName A unique name for the hook
+     * @return True if the hook was successfully installed or is already active
      */
-    static bool InstallHook(void* targetFunction, void* hookFunction, BYTE* originalBytes, 
-                            const HookConfig& config = HookConfig());
+    static bool InstallHook(void* targetFunction, void* hookFunction, const std::string& hookName);
 
     /**
-     * @brief Remove a hook and restore the original function
-     * @param targetFunction Pointer to the hooked function
-     * @param originalBytes Buffer containing the original bytes
-     * @return True if the hook was successfully removed
+     * @brief Remove a previously installed hook
+     * @param hookName The unique name of the hook to remove
+     * @return True if the hook was successfully removed or was not active
      */
-    static bool RemoveHook(void* targetFunction, BYTE* originalBytes);
+    static bool RemoveHook(const std::string& hookName);
 
     /**
-     * @brief Verify hook integrity
-     * @param targetFunction Pointer to the hooked function
-     * @param hookFunction Pointer to the replacement function
-     * @param originalBytes Buffer containing the original bytes
-     * @return Status of the hook
+     * @brief Retrieve the original bytes of a hooked function
+     * @param hookName The unique name of the hook
+     * @param originalBytes Buffer to copy the original bytes into (must be at least 5 bytes)
+     * @return True if the hook was found and bytes were copied
      */
-    static HookStatus VerifyHookIntegrity(void* targetFunction, void* hookFunction, const BYTE* originalBytes);
-
-    /**
-     * @brief Detect the current processor architecture
-     * @return The detected architecture
-     */
-    static Architecture DetectArchitecture();
-
-    /**
-     * @brief Generate a proper trampoline based on the current architecture
-     * @param targetFunction Pointer to the function to hook
-     * @param hookFunction Pointer to the replacement function
-     * @param trampolineBuffer Buffer to store the trampoline code
-     * @param trampolineSize Size of the trampoline buffer
-     * @return Size of the generated trampoline, or 0 if failed
-     */
-    static size_t GenerateTrampoline(void* targetFunction, void* hookFunction, 
-                                     BYTE* trampolineBuffer, size_t trampolineSize);
+    static bool GetOriginalBytes(const std::string& hookName, BYTE* originalBytes);
 
     /**
      * @brief Find the main window of the current process
@@ -97,48 +53,17 @@ public:
     static HWND FindMainWindow();
 
     /**
-     * @brief Get a function address from a DLL by name
-     * @param moduleName Name of the module containing the function
-     * @param functionName Name of the function to find
-     * @return Pointer to the function, or NULL if not found
+     * @brief Get the address of a function from a module.
+     * @param moduleName Name of the module (e.g., "user32.dll").
+     * @param functionName Name of the function.
+     * @return Address of the function, or nullptr if not found.
      */
-    static void* GetFunctionAddress(const wchar_t* moduleName, const char* functionName);
+    static void* GetFunctionAddress(const char* moduleName, const char* functionName);
 
 private:
-    // Helper functions for thread management during hook installation
-    static std::vector<DWORD> SuspendAllThreadsExceptCurrent();
-    static void ResumeThreads(const std::vector<DWORD>& threadIds);
-};
-
-// Hook Handler for advanced hook management
-class HookHandler {
-public:
-    HookHandler(void* targetFunction, void* hookFunction, BYTE* originalBytes,
-                const HookConfig& config = HookConfig());
-    ~HookHandler();
-
-    // Install the hook
-    bool Install();
-    
-    // Uninstall the hook
-    bool Uninstall();
-    
-    // Check if the hook is installed
-    bool IsInstalled() const;
-    
-    // Verify the hook integrity
-    HookStatus Verify() const;
-    
-    // Set a callback for integrity violations
-    void SetIntegrityCallback(std::function<void(HookStatus)> callback);
-
-private:
-    void* m_targetFunction;
-    void* m_hookFunction;
-    BYTE* m_originalBytes;
-    HookConfig m_config;
-    bool m_installed;
-    std::function<void(HookStatus)> m_integrityCallback;
+    // Map to store active hooks (hookName -> HookInfo)
+    static std::unordered_map<std::string, HookInfo> s_activeHooks;
+    static std::mutex s_hookMutex; // Mutex for thread safety
 };
 
 // Helper function for window enumeration
