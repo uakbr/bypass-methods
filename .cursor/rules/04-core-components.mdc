@@ -1,0 +1,46 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Core Components
+
+The core functionality of UndownUnlock is implemented in several key components:
+
+## DirectX Hooking
+
+[src/hooks/dx_hook_core.cpp](mdc:src/hooks/dx_hook_core.cpp) - The central manager for DirectX hooking functionality:
+- Initializes and coordinates all components
+- Manages swap chain hooking
+- Handles frame extraction and callbacks
+- Coordinates COM interface hooks
+
+[src/hooks/swap_chain_hook.cpp](mdc:src/hooks/swap_chain_hook.cpp) - Implements the SwapChain hooking mechanism:
+- Locates and hooks DirectX SwapChain interfaces
+- Intercepts Present calls to capture frames
+- Uses VTable hooking to replace DirectX methods
+
+## Frame Extraction
+
+[src/frame/frame_extractor.cpp](mdc:src/frame/frame_extractor.cpp) - Extracts frames from DirectX:
+- Creates staging textures to capture frames
+- Maps DirectX textures to CPU-accessible memory
+- Handles format conversions when needed
+- Sends extracted frames to shared memory
+
+## Shared Memory Transport
+
+[src/shared/shared_memory_transport.cpp](mdc:src/shared/shared_memory_transport.cpp) - Manages inter-process communication:
+- Implements a thread-safe ring buffer for frames
+- Uses cache-aligned memory for optimal performance
+- Supports multiple compression algorithms (RLE, LZ4, ZSTD)
+- Provides synchronization using slim reader/writer locks
+
+## Windows API Hooks
+
+[src/hooks/windows_api/windows_api_hooks.cpp](mdc:src/hooks/windows_api/windows_api_hooks.cpp) - Hooks Windows functions:
+- Provides anti-detection by hooking window focus APIs
+- Implements keyboard hooks for control
+- Uses IAT (Import Address Table) hooking techniques
+
+The implementation follows a modular design where each component can operate independently but coordinates through the DXHookCore singleton.

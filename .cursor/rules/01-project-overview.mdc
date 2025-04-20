@@ -1,0 +1,22 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Project Overview
+
+UndownUnlock is a DirectX hooking system designed to bypass security protections in applications by intercepting DirectX calls and extracting frame data without detection. It can be used to capture screen content from applications that try to prevent screenshots, like examination proctoring software.
+
+## Key Components
+
+1. **DirectX Hook Core**: Central manager for all hooking functionality
+2. **SwapChain Hook**: Intercepts DirectX rendering calls
+3. **Frame Extractor**: Captures rendered frames from the GPU
+4. **Shared Memory Transport**: Transfers frames between processes
+5. **Pattern Scanner**: Locates functions in memory by signature patterns
+6. **Windows API Hooks**: Prevents detection by hooking security-related APIs
+7. **COM Interface Tracking**: Manages DirectX interface lifecycles
+8. **Memory Leak Detection**: Tracks memory allocations
+9. **DirectX Interface Detection**: Identifies different versions of DirectX interfaces
+
+The main [CMakeLists.txt](mdc:CMakeLists.txt) file defines the project structure and build process.

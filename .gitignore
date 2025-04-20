@@ -64,7 +64,6 @@ to-do.md.bak
 # IDE specific
 .vscode/
 .idea/
-.cursor/
 *.user
 *.suo
 *.sln.docstates

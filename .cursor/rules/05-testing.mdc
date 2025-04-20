@@ -1,0 +1,43 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Testing and Future Development
+
+## Testing Framework
+
+The project uses a comprehensive testing approach with multiple test suites:
+
+- **C++ Unit Tests**: Using Google Test framework in [tests/](mdc:tests)
+  - [tests/test_hooked_functions.cpp](mdc:tests/test_hooked_functions.cpp) - Tests for Windows API hooks
+  - [tests/test_windows_integration.cpp](mdc:tests/test_windows_integration.cpp) - Integration tests for Windows functionality
+  - [tests/test_virtual_camera.cpp](mdc:tests/test_virtual_camera.cpp) - Tests for virtual camera implementation
+
+- **Python Tests**: Python-based testing for IPC and accessibility features
+  - [python/tests/automated_test.py](mdc:python/tests/automated_test.py) - Automated test suite for the accessibility framework
+
+## Project Roadmap
+
+The project's development roadmap is outlined in [TODO.md](mdc:TODO.md) and includes:
+
+### Current Priorities
+- Virtual camera system with DirectShow filter
+- Anti-detection mechanisms for memory signature obfuscation
+- DLL isolation techniques to minimize footprint
+- Screen recording capabilities
+
+### Future Extensions
+- Windows Event Tracing integration
+- Performance counter manager
+- Named pipe communication
+- Credential manager integration
+
+## Testing Requirements
+
+The project aims to be tested across:
+- Multiple Windows versions (Windows 10/11)
+- Various security software configurations
+- Different performance conditions
+
+All new functionality should include appropriate tests to ensure reliability and compatibility.

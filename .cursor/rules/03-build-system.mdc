@@ -1,0 +1,46 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Build System
+
+The project uses CMake as its build system. The main [CMakeLists.txt](mdc:CMakeLists.txt) defines the project structure and compilation process.
+
+## Key Components
+
+The project compiles several main components:
+
+1. **UndownUnlockDXHook** - Main DLL library that contains DirectX hooking functionality
+   - Hooks DirectX swap chain
+   - Implements frame extraction
+   - Provides memory scanning and pattern matching
+   - Contains Windows API hook implementations
+
+2. **UndownUnlockTestClient** - Executable for testing the hooking library
+   - Allows viewing captured frames
+   - Provides a test interface for hook functionality
+
+3. **UndownUnlockVirtualCamera** - Static library for virtual camera functionality
+   - DirectShow filter implementation
+   - Kernel driver functionality
+   - Facial tracking features
+
+4. **UndownUnlockVCamTest** - Test executable for the virtual camera
+
+## Build Options
+
+The build system has several configuration options:
+
+- **USE_LZ4** - Enables LZ4 compression support (default: ON)
+- **USE_ZSTD** - Enables Zstandard compression support (default: ON)
+- **BUILD_TESTING** - Controls whether tests are built (default: ON)
+
+## Dependencies
+
+The project depends on:
+- DirectX headers
+- LZ4 (optional)
+- Zstandard (optional)
+- DirectShow base classes
+- Media Foundation

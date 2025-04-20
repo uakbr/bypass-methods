@@ -1,0 +1,45 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Project Structure
+
+The codebase is organized into the following key directories:
+
+## Source Code Organization
+
+- [src/](mdc:src/) - Main C++ implementation files
+  - [src/com_hooks/](mdc:src/com_hooks/) - COM interface hooking implementation
+  - [src/frame/](mdc:src/frame/) - DirectX frame extraction
+  - [src/hooks/](mdc:src/hooks/) - Windows API and DirectX hooking
+  - [src/memory/](mdc:src/memory/) - Memory scanning and pattern matching
+  - [src/shared/](mdc:src/shared/) - Shared memory transport
+  - [src/signatures/](mdc:src/signatures/) - DirectX function signatures
+  - [src/tests/](mdc:src/tests/) - Internal unit tests
+  - [src/virtual_camera/](mdc:src/virtual_camera/) - Virtual camera implementation
+
+## Headers
+
+- [include/](mdc:include/) - C++ header files
+  - [include/com_hooks/](mdc:include/com_hooks/) - COM hooking declarations
+  - [include/hooks/](mdc:include/hooks/) - API hooking declarations
+  - [include/memory/](mdc:include/memory/) - Memory operations
+  - [include/signatures/](mdc:include/signatures/) - Pattern definitions
+  - [include/virtual_camera/](mdc:include/virtual_camera/) - Virtual camera interfaces
+
+## Python Code
+
+- [python/](mdc:python/) - Python utilities and tools
+  - [python/capture/](mdc:python/capture/) - Screen capture utilities
+  - [python/tools/](mdc:python/tools/) - Injection and utility scripts
+  - [python/accessibility/](mdc:python/accessibility/) - Accessibility control modules
+  - [python/tests/](mdc:python/tests/) - Python-based tests
+  - [python/examples/](mdc:python/examples/) - Example usage scripts
+
+## Documentation and Support Files
+
+- [docs/](mdc:docs/) - Documentation
+- [tests/](mdc:tests/) - C++ test code
+- [scripts/](mdc:scripts/) - Batch files and automation scripts
+- [DLLHooks/](mdc:DLLHooks/) - DLL project files for Visual Studio

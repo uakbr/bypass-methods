@@ -1,0 +1,73 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Getting Started
+
+This guide provides information for developers who want to build and use the UndownUnlock project.
+
+## Building the Project
+
+### Prerequisites
+- CMake 3.12 or newer
+- Visual Studio 2019 or newer with C++17 support
+- DirectX SDK (usually included with Windows SDK)
+- Python 3.6+ (for the injector script)
+- Optional: LZ4 and ZSTD libraries for enhanced compression
+
+### Build Steps
+
+1. Clone the repository and create a build directory:
+```
+mkdir build
+cd build
+```
+
+2. Configure and build:
+```
+cmake ..
+cmake --build . --config Release
+```
+
+3. With compression support enabled:
+```
+cmake .. -DUSE_LZ4=ON -DUSE_ZSTD=ON
+cmake --build . --config Release
+```
+
+## Using the Library
+
+### DLL Injection
+1. Build the project
+2. Use the Python injector script to inject the DLL:
+```
+python python/tools/test_injector.py --name "TargetProcess.exe"
+```
+or
+```
+python python/tools/test_injector.py --pid 1234
+```
+
+### Testing
+Run the tests to verify functionality:
+```
+cd build
+ctest -C Release
+```
+
+## Common Development Tasks
+
+1. Adding a new DirectX hook:
+   - Add signature in [src/signatures/dx_signatures.cpp](mdc:src/signatures/dx_signatures.cpp)
+   - Implement hook in [src/hooks/dx_hook_core.cpp](mdc:src/hooks/dx_hook_core.cpp)
+
+2. Adding a new Windows API hook:
+   - Add hook in [src/hooks/windows_api/hooked_functions.cpp](mdc:src/hooks/windows_api/hooked_functions.cpp)
+   - Register in [src/hooks/windows_api/windows_api_hooks.cpp](mdc:src/hooks/windows_api/windows_api_hooks.cpp)
+
+3. Modifying frame extraction:
+   - Update [src/frame/frame_extractor.cpp](mdc:src/frame/frame_extractor.cpp)
+
+4. Working with shared memory:
+   - See [src/shared/shared_memory_transport.cpp](mdc:src/shared/shared_memory_transport.cpp)
