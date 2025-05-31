@@ -32,6 +32,8 @@ public:
      * @return Handle to the main window, or NULL if not found
      */
     static HWND FindMainWindow();
+
+    // Test comment for writability
 };
 
 // Helper function for window enumeration
