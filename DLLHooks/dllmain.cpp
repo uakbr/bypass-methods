@@ -20,6 +20,7 @@
 #include "../../include/hooks/dx_hook_core.h" // For DirectXHookManager
 #include "../../include/signatures/lockdown_signatures.h" // For testing lockdown signatures
 #include "../../include/memory/pattern_scanner.h"      // For creating PatternScanner instance for test
+#include "../../include/hooks/keyboard_hook.h" // Added for KeyboardHook
 
 
 // Global variables for hook state and parameters are now managed by WindowsApiHookManager
@@ -57,10 +58,11 @@ void TeardownAllHooks() {
     WindowsApiHookManager::GetInstance().UninstallAllHooks();
 }
 
-// Keyboard hook handle - kept for now, to be refactored later.
-HHOOK hKeyboardHook = NULL;
+// Keyboard hook handle - REMOVED
+// HHOOK hKeyboardHook = NULL;
 
-// Keyboard hook callback
+// Keyboard hook callback - REMOVED
+/*
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode == HC_ACTION) {
         PKBDLLHOOKSTRUCT p = (PKBDLLHOOKSTRUCT)lParam;
@@ -106,8 +108,10 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     }
     return CallNextHookEx(hKeyboardHook, nCode, wParam, lParam);
 }
+*/
 
-// Keyboard hook setup thread function
+// Keyboard hook setup thread function - REMOVED
+/*
 void SetupKeyboardHookThread() {
     hKeyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, GetModuleHandle(NULL), 0);
     if (!hKeyboardHook) {
@@ -123,7 +127,7 @@ void SetupKeyboardHookThread() {
     }
     std::cout << "Keyboard hook message loop terminating." << std::endl;
 }
-
+*/
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
@@ -138,9 +142,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         std::cout << "DLL_PROCESS_ATTACH: Initializing DirectX hooks..." << std::endl;
         DirectXHookManager::GetInstance().Initialize();
 
-        // Start the keyboard hook in a new thread
-        // Consider managing this thread more robustly (e.g., storing thread handle, proper termination)
-        std::thread(SetupKeyboardHookThread).detach();
+        // Initialize the Keyboard Hook
+        std::cout << "DLL_PROCESS_ATTACH: Initializing KeyboardHook..." << std::endl;
+        UndownUnlock::WindowsHook::KeyboardHook::Initialize();
+        // std::thread(SetupKeyboardHookThread).detach(); // REMOVED
 
         std::cout << "DLL_PROCESS_ATTACH: UndownUnlock initialization complete." << std::endl;
         break;
@@ -152,10 +157,15 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         std::cout << "DLL_PROCESS_DETACH: Shutting down DirectX hooks..." << std::endl;
         DirectXHookManager::GetInstance().Shutdown();
 
+        // Shutdown the Keyboard Hook
+        std::cout << "DLL_PROCESS_DETACH: Shutting down KeyboardHook..." << std::endl;
+        UndownUnlock::WindowsHook::KeyboardHook::Shutdown();
+
         // Uninstall all Windows API hooks using the new manager
         TeardownAllHooks();
 
-        // Uninstall the keyboard hook
+        // Uninstall the keyboard hook - REMOVED
+        /*
         if (hKeyboardHook != nullptr) {
             if (UnhookWindowsHookEx(hKeyboardHook)) {
                 std::cout << "Keyboard hook uninstalled successfully." << std::endl;
@@ -164,6 +174,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             }
             hKeyboardHook = nullptr;
         }
+        */
         // Signal the keyboard hook thread to terminate its message loop (if it's not already done)
         // This is tricky as PostThreadMessage might not work if the thread is already gone or stuck.
         // A more robust solution would use an event or a shared flag.

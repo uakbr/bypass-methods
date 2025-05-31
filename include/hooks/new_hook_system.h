@@ -74,6 +74,14 @@ public:
     static BOOL WINAPI DetourTerminateProcess(HANDLE hProcess, UINT uExitCode);
 };
 
+// ExitProcess Hook
+class ExitProcessHook : public Hook {
+public:
+    ExitProcessHook();
+    typedef VOID (WINAPI *OriginalFnType)(UINT);
+    static VOID WINAPI DetourExitProcess(UINT uExitCode);
+};
+
 // OpenProcess Hook
 class OpenProcessHook : public Hook {
 public:

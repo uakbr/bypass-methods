@@ -39,45 +39,35 @@ public:
      */
     static HWND FindMainWindow();
 
-    /**
-     * @brief Install keyboard hook to control hooking behavior
-     */
-    static void SetupKeyboardHook();
+    // Original bytes storage for hook restoration - REMOVED
+    // static BYTE s_originalBytesForGetForeground[5];
+    // static BYTE s_originalBytesForShowWindow[5];
+    // static BYTE s_originalBytesForSetWindowPos[5];
+    // static BYTE s_originalBytesForSetFocus[5];
+    // static BYTE s_originalBytesForEmptyClipboard[5];
+    // static BYTE s_originalBytesForSetClipboardData[5];
+    // static BYTE s_originalBytesForTerminateProcess[5];
+    // static BYTE s_originalBytesForExitProcess[5];
 
-    /**
-     * @brief Uninstall the keyboard hook
-     */
-    static void UninstallKeyboardHook();
-
-    // Original bytes storage for hook restoration
-    static BYTE s_originalBytesForGetForeground[5];
-    static BYTE s_originalBytesForShowWindow[5];
-    static BYTE s_originalBytesForSetWindowPos[5];
-    static BYTE s_originalBytesForSetFocus[5];
-    static BYTE s_originalBytesForEmptyClipboard[5];
-    static BYTE s_originalBytesForSetClipboardData[5];
-    static BYTE s_originalBytesForTerminateProcess[5];
-    static BYTE s_originalBytesForExitProcess[5];
-
-    // State tracking - public to allow access from the keyboard hook
-    static bool s_isFocusInstalled;
-    static HWND s_focusHWND;
-    static HWND s_bringWindowToTopHWND;
-    static HWND s_setWindowFocusHWND;
-    static HWND s_setWindowFocushWndInsertAfter;
-    static int s_setWindowFocusX;
-    static int s_setWindowFocusY;
-    static int s_setWindowFocuscx;
-    static int s_setWindowFocuscy;
-    static UINT s_setWindowFocusuFlags;
+    // State tracking - REMOVED
+    // static bool s_isFocusInstalled;
+    // static HWND s_focusHWND;
+    // static HWND s_bringWindowToTopHWND;
+    // static HWND s_setWindowFocusHWND;
+    // static HWND s_setWindowFocushWndInsertAfter;
+    // static int s_setWindowFocusX;
+    // static int s_setWindowFocusY;
+    // static int s_setWindowFocuscx;
+    // static int s_setWindowFocuscy;
+    // static UINT s_setWindowFocusuFlags;
 
 private:
     // Helper methods for hooking and unhooking
     static bool HookFunction(void* targetFunction, void* hookFunction, BYTE* originalBytes);
     static bool UnhookFunction(void* targetFunction, BYTE* originalBytes);
 
-    // Keyboard hook callback
-    static LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam);
+    // Keyboard hook callback - REMOVED as it's managed by KeyboardHook class
+    // static LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam);
 };
 
 // Helper function for window enumeration

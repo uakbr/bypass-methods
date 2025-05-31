@@ -1,6 +1,28 @@
 #include "../../../include/hooks/trampoline_utils.h"
 #include <windows.h>
 #include <iostream> // For debugging
+
+// =================================================================================================
+// WARNING: THIS FILE CONTAINS CRITICAL LIMITATIONS FOR PRODUCTION USE
+// =================================================================================================
+// The trampoline utilities provided in this file, especially `CalculateMinimumPrologueSize`,
+// are simplified and DO NOT USE A DISASSEMBLER. This means they are inherently unsafe for
+// general-purpose hooking, particularly in x64 environments or with functions that have
+// complex or variable-length prologue instructions.
+//
+// Using this code without a proper disassembler (e.g., Zydis, Capstone) to accurately
+// determine instruction boundaries will likely lead to:
+//   - Cutting instructions mid-byte.
+//   - Copying incomplete instructions to the trampoline.
+//   - Incorrect jump calculations.
+//   - Application instability, crashes, or undefined behavior.
+//
+// The current `CalculateMinimumPrologueSize` includes a compile-time error to prevent
+// compilation for x64 due to these safety concerns. The x86 logic is also risky and
+// assumes simple function prologues.
+//
+// PROCEED WITH EXTREME CAUTION AND CONSIDER THIS A PLACEHOLDER FOR A ROBUST SOLUTION.
+// =================================================================================================
 #include <stdexcept> // For exceptions if needed, though returning bool for now
 
 // Define JMP_REL32_SIZE if not already defined (e.g. in a common header)
@@ -17,31 +39,49 @@
 namespace UndownUnlock {
     namespace TrampolineUtils {
 
-        // Simplified: Returns a fixed minimum size.
-        // A proper implementation requires a disassembler.
         SIZE_T CalculateMinimumPrologueSize(LPCVOID functionAddress, SIZE_T minBytesToCopy) {
-            // TODO: Implement basic instruction scanning if possible, or use a small disassembler library.
-            // For now, ensuring it's at least JMP_REL32_SIZE for safety if we are overwriting with a JMP.
-            // This function's purpose is to determine how many bytes of the ORIGINAL function
-            // need to be copied to the trampoline without cutting an instruction.
-            // It's not about the size of the JMP we *write* into the original function.
-            // It's about how many original instructions we need to preserve.
+            // This function is a critical placeholder and has severe limitations.
+            //
+            // CRITICAL IMPLEMENTATION NOTE:
+            // A proper disassembler (e.g., Zydis, Capstone) is ABSOLUTELY REQUIRED to accurately
+            // determine the number of bytes to copy for a function prologue without cutting instructions
+            // in half. Simply copying a fixed number of bytes is extremely dangerous.
+            //
+            // The current approach of using a fixed size (even if slightly larger than a JMP instruction)
+            // is inherently unsafe and can lead to application instability or crashes. This is because:
+            //   1. Instructions have variable lengths. Copying a fixed size can easily cut an instruction.
+            //   2. Functions can have prologues of varying complexity.
+            //   3. Optimizations (like hotpatching support) can alter prologues.
+            //
+            // This is particularly problematic for x64 due to:
+            //   - Different instruction encodings and lengths (e.g., REX prefixes).
+            //   - The potential need for larger JMP instructions (e.g., 14-byte absolute JMP via RAX)
+            //     if the detour target is outside the +/- 2GB range of a 32-bit relative JMP.
+            //     The current trampoline and hook logic primarily uses 5-byte relative JMPs.
+            //
+            // The Hook class currently determines `prologueSize_` (often default 5 bytes) and passes it
+            // as `minBytesToCopy`. This function, in its current state, doesn't perform any actual
+            // disassembly or intelligent calculation based on `functionAddress`.
 
-            // Simplistic approach: return the requested minBytesToCopy, ensuring it's reasonable.
-            // A common safe minimum for simple hooks is 5-7 bytes.
-            // If minBytesToCopy is already 5 (for our JMP), then this is fine for that purpose.
-            // The actual number of bytes to copy for the trampoline *must* be instruction-aligned.
-            // For this simplified version, we'll assume the caller (Hook class) will decide a prologue size
-            // (e.g. 5, 6, or more bytes) and this function just validates it minimally or would perform analysis.
-            // Given the constraints, we'll just return a fixed known-safe-minimum like 5 or 6.
-            // The Hook class will manage its `prologueSize_` member. This util function
-            // would be more useful if it actually disassembled.
-            // For now, let's make it simple: ensure at least 5 bytes.
+            #ifdef _WIN64
+            #error "CRITICAL: CalculateMinimumPrologueSize in trampoline_utils.cpp is not implemented safely for x64. It lacks a disassembler to determine correct instruction boundaries and uses x86-specific JMP logic. This will lead to crashes. Compilation halted to prevent runtime errors. A proper disassembler and x64-compatible trampoline logic are required."
+            #endif
+
+            // The following logic is for x86 (32-bit) context ONLY and is still risky.
+            // It assumes that `minBytesToCopy` (typically 5 bytes, the size of a JMP_REL32 instruction)
+            // is sufficient for the prologue of simple functions. This is a fragile assumption.
+            // The Hook class relies on this behavior for its `prologueSize_` calculation.
             if (minBytesToCopy < JMP_REL32_SIZE) {
+                // If the requested size is less than a 32-bit relative JMP, return at least that much.
+                // This primarily ensures that if we overwrite with a JMP, we've copied at least enough
+                // bytes that our JMP instruction itself would occupy.
                 return JMP_REL32_SIZE;
             }
-            // std::cout << "[TrampolineUtils] CalculateMinimumPrologueSize: Using fixed size: " << minBytesToCopy << std::endl;
-            return minBytesToCopy; // Return the requested size, assuming it's somewhat safe.
+
+            // For x86, and with the above caveats, return the passed `minBytesToCopy`.
+            // This is still unsafe as it doesn't guarantee instruction integrity.
+            // std::cout << "[TrampolineUtils] CalculateMinimumPrologueSize (x86, UNSAFE): Using fixed size: " << minBytesToCopy << std::endl;
+            return minBytesToCopy;
         }
 
 

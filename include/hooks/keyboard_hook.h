@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <iostream>
+#include <thread> // Added for std::thread
 
 namespace UndownUnlock {
 namespace WindowsHook {
@@ -29,6 +30,8 @@ public:
 private:
     // Low-level keyboard hook handle
     static HHOOK s_keyboardHook;
+    // Thread for running the message loop
+    static std::thread s_messageLoopThread;
 
     // Keyboard hook callback procedure
     static LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam);

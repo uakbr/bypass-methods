@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
+project(UndownUnlockTests NONE) # Using NONE as it's not a standalone library/app build here
 
 # Include directories
 include_directories(

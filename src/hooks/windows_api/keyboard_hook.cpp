@@ -1,11 +1,14 @@
 #include "../../../include/hooks/keyboard_hook.h"
-#include "../../../include/hooks/windows_api_hooks.h"
+// #include "../../../include/hooks/windows_api_hooks.h" // Replaced by new_hook_system.h
+#include "../../../include/new_hook_system.h" // Added for WindowsApiHookManager
+#include <thread> // Added for std::thread
 
 namespace UndownUnlock {
 namespace WindowsHook {
 
 // Initialize static variables
 HHOOK KeyboardHook::s_keyboardHook = NULL;
+std::thread KeyboardHook::s_messageLoopThread;
 
 void KeyboardHook::Initialize() {
     // Install a low-level keyboard hook that will monitor all keyboard input
@@ -16,6 +19,9 @@ void KeyboardHook::Initialize() {
     }
     else {
         std::cout << "Keyboard hook installed successfully." << std::endl;
+        // Create a new detached thread for RunMessageLoop()
+        s_messageLoopThread = std::thread(RunMessageLoop);
+        s_messageLoopThread.detach();
     }
 }
 
@@ -52,32 +58,32 @@ LRESULT CALLBACK KeyboardHook::KeyboardHookProc(int nCode, WPARAM wParam, LPARAM
             switch (p->vkCode) {
                 // VK_UP is the virtual key code for the Up arrow key
                 case VK_UP:
-                    WindowsAPIHooks::InstallFocusHooks();
+                    WindowsApiHookManager::GetInstance().InstallWindowManagementHooks();
                     std::cout << "Up arrow key pressed, installing focus hooks." << std::endl;
                     break;
                     
                 // VK_DOWN is the virtual key code for the Down arrow key
                 case VK_DOWN:
-                    WindowsAPIHooks::UninstallFocusHooks();
+                    WindowsApiHookManager::GetInstance().UninstallWindowManagementHooks();
                     
                     // Apply the original functions to restore normal behavior
-                    if (WindowsAPIHooks::s_focusHWND != NULL) {
-                        SetFocus(WindowsAPIHooks::s_focusHWND);
+                    if (WindowsApiHookManager::g_focusHWND != NULL) {
+                        SetFocus(WindowsApiHookManager::g_focusHWND);
                     }
                     
-                    if (WindowsAPIHooks::s_bringWindowToTopHWND != NULL) {
-                        BringWindowToTop(WindowsAPIHooks::s_bringWindowToTopHWND);
+                    if (WindowsApiHookManager::g_bringWindowToTopHWND != NULL) {
+                        BringWindowToTop(WindowsApiHookManager::g_bringWindowToTopHWND);
                     }
                     
-                    if (WindowsAPIHooks::s_setWindowFocusHWND != NULL) {
+                    if (WindowsApiHookManager::g_setWindowPosParams.hwnd != NULL) {
                         SetWindowPos(
-                            WindowsAPIHooks::s_setWindowFocusHWND, 
-                            WindowsAPIHooks::s_setWindowFocushWndInsertAfter, 
-                            WindowsAPIHooks::s_setWindowFocusX, 
-                            WindowsAPIHooks::s_setWindowFocusY, 
-                            WindowsAPIHooks::s_setWindowFocuscx, 
-                            WindowsAPIHooks::s_setWindowFocuscy, 
-                            WindowsAPIHooks::s_setWindowFocusuFlags
+                            WindowsApiHookManager::g_setWindowPosParams.hwnd,
+                            WindowsApiHookManager::g_setWindowPosParams.hwndInsertAfter,
+                            WindowsApiHookManager::g_setWindowPosParams.x,
+                            WindowsApiHookManager::g_setWindowPosParams.y,
+                            WindowsApiHookManager::g_setWindowPosParams.cx,
+                            WindowsApiHookManager::g_setWindowPosParams.cy,
+                            WindowsApiHookManager::g_setWindowPosParams.flags
                         );
                     }
                     

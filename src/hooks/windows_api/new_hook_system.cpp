@@ -53,6 +53,7 @@ void WindowsApiHookManager::RegisterHooks() {
     // General / Process / Clipboard / DirectX Creation Hooks
     all_hooks_.push_back(std::make_unique<CreateProcessWHook>());
     all_hooks_.push_back(std::make_unique<TerminateProcessHook>());
+    all_hooks_.push_back(std::make_unique<ExitProcessHook>()); // Added ExitProcessHook
     all_hooks_.push_back(std::make_unique<OpenProcessHook>());
     all_hooks_.push_back(std::make_unique<EmptyClipboardHook>());
     all_hooks_.push_back(std::make_unique<SetClipboardDataHook>());
@@ -88,6 +89,7 @@ void WindowsApiHookManager::InstallGeneralHooks() {
     for (const auto& hook : all_hooks_) {
         if (dynamic_cast<CreateProcessWHook*>(hook.get()) ||
             dynamic_cast<TerminateProcessHook*>(hook.get()) ||
+            dynamic_cast<ExitProcessHook*>(hook.get()) ||
             dynamic_cast<OpenProcessHook*>(hook.get()) ||
             dynamic_cast<EmptyClipboardHook*>(hook.get()) ||
             dynamic_cast<SetClipboardDataHook*>(hook.get()) ||
@@ -128,6 +130,7 @@ void WindowsApiHookManager::UninstallGeneralHooks() {
     for (const auto& hook : all_hooks_) {
         if (dynamic_cast<CreateProcessWHook*>(hook.get()) ||
             dynamic_cast<TerminateProcessHook*>(hook.get()) ||
+            dynamic_cast<ExitProcessHook*>(hook.get()) ||
             dynamic_cast<OpenProcessHook*>(hook.get()) ||
             dynamic_cast<EmptyClipboardHook*>(hook.get()) ||
             dynamic_cast<SetClipboardDataHook*>(hook.get()) ||
@@ -208,6 +211,9 @@ CreateProcessWHook::CreateProcessWHook()
 
 TerminateProcessHook::TerminateProcessHook()
     : Hook("kernel32.dll", "TerminateProcess", (void*)DetourTerminateProcess) {}
+
+ExitProcessHook::ExitProcessHook()
+    : Hook("kernel32.dll", "ExitProcess", (void*)DetourExitProcess) {}
 
 OpenProcessHook::OpenProcessHook()
     : Hook("kernel32.dll", "OpenProcess", (void*)DetourOpenProcess) {}
@@ -313,6 +319,26 @@ BOOL WINAPI TerminateProcessHook::DetourTerminateProcess(HANDLE hProcess, UINT u
     }
     std::cout << "  Original TerminateProcess not callable." << std::endl;
     return FALSE;
+}
+
+VOID WINAPI ExitProcessHook::DetourExitProcess(UINT uExitCode) {
+    std::cout << "[Detour] ExitProcess called. Exit Code: " << uExitCode << std::endl;
+
+    // Using the GET_ORIGINAL_FUNC macro for consistency
+    auto originalFunc = GET_ORIGINAL_FUNC(ExitProcessHook, OriginalFnType);
+
+    if (originalFunc) {
+        std::cout << "  Calling original ExitProcess..." << std::endl;
+        originalFunc(uExitCode); // This function does not return
+    } else {
+        std::cerr << "  Original ExitProcess not callable. Forcing exit." << std::endl;
+        // If original cannot be called, we must still exit.
+        // Using std::exit or similar might be an option but could bypass some OS cleanup.
+        // For now, just log and the process will terminate due to returning from here if not hooked correctly.
+        // However, ExitProcess itself doesn't return, so this path is unlikely if hook is proper.
+        // A direct call to kernel's ExitProcess via GetProcAddress could be a fallback if really needed.
+        ::ExitProcess(uExitCode); // Fallback to direct API call if original hook failed.
+    }
 }
 
 HANDLE WINAPI OpenProcessHook::DetourOpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwProcessId) {
