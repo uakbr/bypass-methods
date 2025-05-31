@@ -1,374 +1,64 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
-#include <psapi.h>
+#include <psapi.h> // For EnumWindows, GetWindowThreadProcessId, GetCurrentProcessId if FindMainWindow is kept here
 #include <iostream>
-#include <tlhelp32.h>
+#include <tlhelp32.h> // Not strictly needed after refactoring if process functions are also moved
 #include <cstdlib>
-#include <tchar.h>
+#include <tchar.h> // For _TCHAR related things, might not be needed
 #include <thread>
-#include <vector>
-#include <string>
-#include <fstream>
-#include <GL/gl.h>
-#include <wincodec.h> // For WIC
-#pragma comment(lib, "windowscodecs.lib") // Link against the WIC library
+#include <vector> // Included for completeness, might not be directly used
+#include <string> // Included for completeness
+// #include <fstream> // Was present, probably for logging or other utilities not part of core hooking
+// #include <GL/gl.h> // Was present, OpenGL related, not part of Windows API hooks
+// #include <wincodec.h> // For WIC, not part of Windows API hooks
+// #pragma comment(lib, "windowscodecs.lib") // For WIC
 
-bool isFocusInstalled = false; // Global flag
+// Include the new hook manager system
+// Adjust path as necessary based on project structure.
+// Assuming DLLHooks is at the same level as 'include' and 'src' directories.
+#include "../../include/hooks/new_hook_system.h"
+#include "../../include/hooks/dx_hook_core.h" // For DirectXHookManager
+#include "../../include/signatures/lockdown_signatures.h" // For testing lockdown signatures
+#include "../../include/memory/pattern_scanner.h"      // For creating PatternScanner instance for test
 
-// create global hWND variable
-HWND focusHWND = NULL;
-HWND bringWindowToTopHWND = NULL;
-HWND setWindowFocusHWND = NULL;
-HWND setWindowFocushWndInsertAfter = NULL;
-int setWindowFocusX = 0;
-int setWindowFocusY = 0;
-int setWindowFocuscx = 0;
-int setWindowFocuscy = 0;
-UINT setWindowFocusuFlags = 0;
 
-BYTE originalBytesForGetForeground[5] = { 0 };
-BYTE originalBytesForShowWindow[5] = { 0 };
-BYTE originalBytesForSetWindowPos[5] = { 0 };
-BYTE orginalBytesForSetFocus[5] = { 0 };
-BYTE originalBytesForEmptyClipboard[5] = { 0 };
-BYTE originalBytesForSetClipboardData[5] = { 0 };
-BYTE originalBytesForTerminateProcess[5] = { 0 };
-BYTE originalBytesForExitProcess[5] = { 0 };
+// Global variables for hook state and parameters are now managed by WindowsApiHookManager
+// or specific hook classes. e.g. WindowsApiHookManager::g_focusHWND
 
-// My custom functions
-HWND WINAPI MyGetForegroundWindow();
-BOOL WINAPI MyShowWindow(HWND hWnd);
-BOOL WINAPI MySetWindowPos(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, UINT uFlags);
-HWND WINAPI MySetFocus(HWND hWnd);
-HWND WINAPI MyGetWindow(HWND hWnd, UINT uCmd);
-int WINAPI MyGetWindowTextW(HWND hWnd, LPWSTR lpString, int nMaxCount);
-BOOL WINAPI MyK32EnumProcesses(DWORD * pProcessIds, DWORD cb, DWORD * pBytesReturned);
-HANDLE WINAPI MyOpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwProcessId);
-BOOL WINAPI MyTerminateProcess(HANDLE hProcess, UINT uExitCode);
-VOID WINAPI MyExitProcess(UINT uExitCode);
-BOOL WINAPI MyEmptyClipboard();
-HANDLE WINAPI MySetClipboardData(UINT uFormat, HANDLE hMem);
+// All "MyFunction" detour implementations are now static methods within their respective hook classes
+// (e.g., GetForegroundWindowHook::DetourGetForegroundWindow) in new_hook_system.cpp
 
-// Implement MySetClipboardData which does nothing
-HANDLE WINAPI MySetClipboardData(UINT uFormat, HANDLE hMem) {
-    // This custom function does nothing
-    std::cout << "SetClipboardData hook called, but not setting clipboard data." << std::endl;
-    return NULL; // Indicate failure or that the data was not set
+// The originalBytes... arrays are now members of each individual Hook object.
+
+
+// The InstallHook(), InstallFocus(), UninstallFocus(), UninstallHook() functions
+// will be replaced by calls to WindowsApiHookManager.
+
+void InitializeAllHooks() {
+    std::cout << "DllMain: Initializing all hooks via WindowsApiHookManager..." << std::endl;
+    WindowsApiHookManager::GetInstance().InitializeAndInstallHooks();
+    // Potentially show a message box or log that hooks are set up by the new manager
+    MessageBox(NULL, L"UndownUnlock Hooks Initialized (New System)", L"UndownUnlock", MB_OK);
+
+    // --- Temporary Test for Lockdown Signatures ---
+    std::cout << "\n[DLLMAIN_TEST] Running Lockdown Signatures Test..." << std::endl;
+    UndownUnlock::DXHook::PatternScanner tempScanner;
+    if (tempScanner.Initialize()) { // Initialize scanner's own memory regions (though test uses a local block)
+        UndownUnlock::Signatures::TestLockdownSignatures(tempScanner);
+    } else {
+        std::cerr << "[DLLMAIN_TEST] Failed to initialize PatternScanner for Lockdown Signatures Test." << std::endl;
+    }
+    std::cout << "[DLLMAIN_TEST] Lockdown Signatures Test completed.\n" << std::endl;
+    // --- End Temporary Test ---
 }
 
-BOOL WINAPI MyEmptyClipboard() {
-    // This custom function pretends to clear the clipboard but does nothing
-    std::cout << "EmptyClipboard hook called, but not clearing the clipboard." << std::endl;
-    return TRUE; // Pretend success
+void TeardownAllHooks() {
+    std::cout << "DllMain: Tearing down all hooks via WindowsApiHookManager..." << std::endl;
+    WindowsApiHookManager::GetInstance().UninstallAllHooks();
 }
 
-HANDLE WINAPI MyOpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwProcessId) {
-    std::cout << "OpenProcess hook called, but not opening process." << std::endl;
-    return NULL;
-}
-
-BOOL WINAPI MyTerminateProcess(HANDLE hProcess, UINT uExitCode) {
-    std::cout << "TerminateProcess hook called, but not terminating process." << std::endl;
-    return TRUE; // Simulate success
-}
-
-VOID WINAPI MyExitProcess(UINT uExitCode) {
-    std::cout << "ExitProcess hook called, but not exiting process." << std::endl;
-}
-
-BOOL WINAPI MyK32EnumProcesses(DWORD * pProcessIds, DWORD cb, DWORD * pBytesReturned) {
-    // This custom function behaves as if no processes are running
-    std::cout << "K32EnumProcesses hook called, but pretending no processes exist." << std::endl;
-    if (pBytesReturned != NULL) {
-        *pBytesReturned = 0; // Indicate no processes were written to the buffer
-    }
-    return TRUE; // Indicate the function succeeded
-}
-
-int WINAPI MyGetWindowTextW(HWND hWnd, LPWSTR lpString, int nMaxCount) {
-    // This custom function behaves as if no window title is retrieved
-    std::cout << "GetWindowTextW hook called, but not returning actual window text." << std::endl;
-    if (nMaxCount > 0) {
-        lpString[0] = L'\0'; // Return an empty string
-    }
-    return 0; // Indicate that no characters were copied to the buffer
-}
-
-BOOL WINAPI MySetWindowPos(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, UINT uFlags) {
-    setWindowFocusHWND = hWnd;
-    setWindowFocushWndInsertAfter = hWndInsertAfter;
-    setWindowFocusX = X;
-    setWindowFocusY = Y;
-    setWindowFocuscx = cx;
-    setWindowFocuscy = cy;
-    setWindowFocusuFlags = uFlags;
-    // This custom function does nothing
-    std::cout << "SetWindowPos hook called, but not changing window position." << std::endl;
-    return TRUE; // Pretend success
-}
-
-BOOL WINAPI MyShowWindow(HWND hWnd) {
-    bringWindowToTopHWND = hWnd;
-    // This custom function does nothing
-    std::cout << "ShowWindow hook called, but not bringing window to top." << std::endl;
-    return TRUE; // Pretend success
-}
-
-HWND WINAPI MyGetWindow(HWND hWnd, UINT uCmd) {
-    // This custom function behaves as if there are no windows to return
-    std::cout << "GetWindow hook called, but pretending no related window." << std::endl;
-    return NULL; // Indicate no window found
-}
-
-void InstallHook() {
-    std::cout << "Installing hooks..." << std::endl;
-    DWORD oldProtect;
-
-    // Hook EmptyClipboard
-    HMODULE hUser32 = GetModuleHandle(L"user32.dll");
-    if (hUser32) {
-        void* targetEmptyClipboard = GetProcAddress(hUser32, "EmptyClipboard");
-        if (targetEmptyClipboard) {
-            DWORD jumpEmptyClipboard = (DWORD)MyEmptyClipboard - (DWORD)targetEmptyClipboard - 5;
-            memcpy(originalBytesForEmptyClipboard, targetEmptyClipboard, sizeof(originalBytesForEmptyClipboard));
-            if (VirtualProtect(targetEmptyClipboard, sizeof(originalBytesForEmptyClipboard), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                *((BYTE*)targetEmptyClipboard) = 0xE9;
-                *((DWORD*)((BYTE*)targetEmptyClipboard + 1)) = jumpEmptyClipboard;
-                VirtualProtect(targetEmptyClipboard, sizeof(originalBytesForEmptyClipboard), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // Hook GetForegroundWindow
-    if (hUser32) {
-        void* targetGetForegroundWindow = GetProcAddress(hUser32, "GetForegroundWindow");
-        if (targetGetForegroundWindow) {
-            DWORD jumpGetForeground = (DWORD)MyGetForegroundWindow - (DWORD)targetGetForegroundWindow - 5;
-            memcpy(originalBytesForGetForeground, targetGetForegroundWindow, sizeof(originalBytesForGetForeground));
-            if (VirtualProtect(targetGetForegroundWindow, sizeof(originalBytesForGetForeground), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                *((BYTE*)targetGetForegroundWindow) = 0xE9;
-                *((DWORD*)((BYTE*)targetGetForegroundWindow + 1)) = jumpGetForeground;
-                VirtualProtect(targetGetForegroundWindow, sizeof(originalBytesForGetForeground), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // Hook TerminateProcess
-    HMODULE hKernel32 = GetModuleHandle(L"kernel32.dll");
-    if (hKernel32) {
-        void* targetTerminateProcess = GetProcAddress(hKernel32, "TerminateProcess");
-        if (targetTerminateProcess) {
-            DWORD jumpTerminateProcess = ((DWORD)MyTerminateProcess - (DWORD)targetTerminateProcess - 5);
-            memcpy(originalBytesForTerminateProcess, targetTerminateProcess, sizeof(originalBytesForTerminateProcess));
-            if (VirtualProtect(targetTerminateProcess, sizeof(originalBytesForTerminateProcess), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                *((BYTE*)targetTerminateProcess) = 0xE9;
-                *((DWORD*)((BYTE*)targetTerminateProcess + 1)) = jumpTerminateProcess;
-                VirtualProtect(targetTerminateProcess, sizeof(originalBytesForTerminateProcess), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // Hook ExitProcess
-    if (hKernel32) {
-        void* targetExitProcess = GetProcAddress(hKernel32, "ExitProcess");
-        if (targetExitProcess) {
-            DWORD jumpExitProcess = ((DWORD)MyExitProcess - (DWORD)targetExitProcess - 5);
-            memcpy(originalBytesForExitProcess, targetExitProcess, sizeof(originalBytesForExitProcess));
-            if (VirtualProtect(targetExitProcess, sizeof(originalBytesForExitProcess), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                *((BYTE*)targetExitProcess) = 0xE9;
-                *((DWORD*)((BYTE*)targetExitProcess + 1)) = jumpExitProcess;
-                VirtualProtect(targetExitProcess, sizeof(originalBytesForExitProcess), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // create a message box to show the dll is loaded
-    MessageBox(NULL, L"Injected :)", L"UndownUnlock", MB_OK);
-}
-
-void InstallFocus() {
-    if (isFocusInstalled) {
-        return;
-    }
-    isFocusInstalled = true;
-    std::cout << "Installing focus..." << std::endl;
-    DWORD oldProtect;
-
-    // Hook BringWindowToTop
-    HMODULE hUser32 = GetModuleHandle(L"user32.dll");
-    if (hUser32) {
-        void* targetShowWindow = GetProcAddress(hUser32, "BringWindowToTop");
-        if (targetShowWindow) {
-            DWORD jumpBringWindowToTop = (DWORD)MyShowWindow - (DWORD)targetShowWindow - 5;
-            memcpy(originalBytesForShowWindow, targetShowWindow, sizeof(originalBytesForShowWindow));
-            if (VirtualProtect(targetShowWindow, sizeof(originalBytesForShowWindow), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                *((BYTE*)targetShowWindow) = 0xE9;
-                *((DWORD*)((BYTE*)targetShowWindow + 1)) = jumpBringWindowToTop;
-                VirtualProtect(targetShowWindow, sizeof(originalBytesForShowWindow), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // Hook SetWindowPos
-    if (hUser32) {
-        void* targetSetWindowPos = GetProcAddress(hUser32, "SetWindowPos");
-        if (targetSetWindowPos) {
-            DWORD jumpSetWindowPos = (DWORD)MySetWindowPos - (DWORD)targetSetWindowPos - 5;
-            memcpy(originalBytesForSetWindowPos, targetSetWindowPos, sizeof(originalBytesForSetWindowPos));
-            if (VirtualProtect(targetSetWindowPos, sizeof(originalBytesForSetWindowPos), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                *((BYTE*)targetSetWindowPos) = 0xE9;
-                *((DWORD*)((BYTE*)targetSetWindowPos + 1)) = jumpSetWindowPos;
-                VirtualProtect(targetSetWindowPos, sizeof(originalBytesForSetWindowPos), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // Hook SetFocus
-    if (hUser32) {
-        void* targetSetFocus = GetProcAddress(hUser32, "SetFocus");
-        if (targetSetFocus) {
-            DWORD jumpSetFocus = (DWORD)MySetFocus - (DWORD)targetSetFocus - 5;
-            memcpy(orginalBytesForSetFocus, targetSetFocus, sizeof(orginalBytesForSetFocus));
-            if (VirtualProtect(targetSetFocus, sizeof(orginalBytesForSetFocus), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                *((BYTE*)targetSetFocus) = 0xE9;
-                *((DWORD*)((BYTE*)targetSetFocus + 1)) = jumpSetFocus;
-                VirtualProtect(targetSetFocus, sizeof(orginalBytesForSetFocus), oldProtect, &oldProtect);
-            }
-        }
-    }
-}
-
-void UninstallFocus() {
-    if (!isFocusInstalled) {
-        return;
-    }
-    isFocusInstalled = false;
-    std::cout << "Uninstalling focus..." << std::endl;
-    DWORD oldProtect;
-
-    // Unhook BringWindowToTop
-    HMODULE hUser32 = GetModuleHandle(L"user32.dll");
-    if (hUser32) {
-        void* targetShowWindow = GetProcAddress(hUser32, "BringWindowToTop");
-        if (targetShowWindow) {
-            if (VirtualProtect(targetShowWindow, sizeof(originalBytesForShowWindow), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                memcpy(targetShowWindow, originalBytesForShowWindow, sizeof(originalBytesForShowWindow));
-                VirtualProtect(targetShowWindow, sizeof(originalBytesForShowWindow), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // Unhook SetWindowPos
-    if (hUser32) {
-        void* targetSetWindowPos = GetProcAddress(hUser32, "SetWindowPos");
-        if (targetSetWindowPos) {
-            if (VirtualProtect(targetSetWindowPos, sizeof(originalBytesForSetWindowPos), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                memcpy(targetSetWindowPos, originalBytesForSetWindowPos, sizeof(originalBytesForSetWindowPos));
-                VirtualProtect(targetSetWindowPos, sizeof(originalBytesForSetWindowPos), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // Unhook SetFocus
-    if (hUser32) {
-        void* targetSetFocus = GetProcAddress(hUser32, "SetFocus");
-        if (targetSetFocus) {
-            if (VirtualProtect(targetSetFocus, sizeof(orginalBytesForSetFocus), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                memcpy(targetSetFocus, orginalBytesForSetFocus, sizeof(orginalBytesForSetFocus));
-                VirtualProtect(targetSetFocus, sizeof(orginalBytesForSetFocus), oldProtect, &oldProtect);
-            }
-        }
-    }
-}
-
-void UninstallHook() {
-    DWORD oldProtect;
-
-    // Unhook SetClipboardData
-    HMODULE hUser32 = GetModuleHandle(L"user32.dll");
-    if (hUser32) {
-        void* targetSetClipboardData = GetProcAddress(hUser32, "SetClipboardData");
-        if (targetSetClipboardData) {
-            if (VirtualProtect(targetSetClipboardData, sizeof(originalBytesForSetClipboardData), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                memcpy(targetSetClipboardData, originalBytesForSetClipboardData, sizeof(originalBytesForSetClipboardData));
-                VirtualProtect(targetSetClipboardData, sizeof(originalBytesForSetClipboardData), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // Unhook EmptyClipboard
-    if (hUser32) {
-        void* targetEmptyClipboard = GetProcAddress(hUser32, "EmptyClipboard");
-        if (targetEmptyClipboard) {
-            if (VirtualProtect(targetEmptyClipboard, sizeof(originalBytesForEmptyClipboard), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                memcpy(targetEmptyClipboard, originalBytesForEmptyClipboard, sizeof(originalBytesForEmptyClipboard));
-                VirtualProtect(targetEmptyClipboard, sizeof(originalBytesForEmptyClipboard), oldProtect, &oldProtect);
-            }
-        }
-    }
-
-    // Unhook GetForegroundWindow
-    if (hUser32) {
-        void* targetGetForegroundWindow = GetProcAddress(hUser32, "GetForegroundWindow");
-        if (targetGetForegroundWindow) {
-            if (VirtualProtect(targetGetForegroundWindow, sizeof(originalBytesForGetForeground), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-                memcpy(targetGetForegroundWindow, originalBytesForGetForeground, sizeof(originalBytesForGetForeground));
-                VirtualProtect(targetGetForegroundWindow, sizeof(originalBytesForGetForeground), oldProtect, &oldProtect);
-            }
-        }
-    }
-}
-
-// Helper function to determine if the given window is the main window of the current process
-BOOL IsMainWindow(HWND handle) {
-    return GetWindow(handle, GW_OWNER) == (HWND)0 && IsWindowVisible(handle);
-}
-
-// Callback function for EnumWindows
-BOOL CALLBACK EnumWindowsCallback(HWND handle, LPARAM lParam) {
-    DWORD processID = 0;
-    GetWindowThreadProcessId(handle, &processID);
-    if (GetCurrentProcessId() == processID && IsMainWindow(handle)) {
-        // Stop enumeration if a main window is found, and return its handle
-        *reinterpret_cast<HWND*>(lParam) = handle;
-        return FALSE;
-    }
-    return TRUE;
-}
-
-// Function to find the main window of the current process
-HWND FindMainWindow() {
-    HWND mainWindow = NULL;
-    EnumWindows(EnumWindowsCallback, reinterpret_cast<LPARAM>(&mainWindow));
-    return mainWindow;
-}
-
-// Your hook function implementation
-HWND WINAPI MyGetForegroundWindow() {
-    HWND hWnd = FindMainWindow();
-    if (hWnd != NULL) {
-        std::cout << "Returning the main window of the current application." << std::endl;
-        return hWnd;
-    }
-    std::cout << "Main window not found, returning NULL." << std::endl;
-    return NULL;
-}
-
-HWND WINAPI MySetFocus(HWND _hWnd) {
-    focusHWND = _hWnd;
-    HWND hWnd = FindMainWindow(); // Find the main window of the current process
-    if (hWnd != NULL) {
-        std::cout << "Returning the main window of the current application due to '[' key press." << std::endl;
-        return hWnd; // Return the main window handle if found
-    }
-    else {
-        std::cout << "Main window not found, returning NULL." << std::endl;
-        return NULL; // If main window is not found, return NULL
-    }
-}
-
-// Keyboard hook handle
-HHOOK hKeyboardHook;
+// Keyboard hook handle - kept for now, to be refactored later.
+HHOOK hKeyboardHook = NULL;
 
 // Keyboard hook callback
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -376,26 +66,40 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
         PKBDLLHOOKSTRUCT p = (PKBDLLHOOKSTRUCT)lParam;
         if (wParam == WM_KEYDOWN) {
             switch (p->vkCode) {
-                // VK_UP is the virtual key code for the Up arrow key
             case VK_UP:
-                //CaptureOpenGLScreen();
-                InstallFocus();
-                std::cout << "Up arrow key pressed, installing focus hook." << std::endl;
+                std::cout << "Up arrow key pressed, installing focus hooks via manager." << std::endl;
+                WindowsApiHookManager::GetInstance().InstallFocusControlHooks();
                 break;
-                // VK_DOWN is the virtual key code for the Down arrow key
             case VK_DOWN:
-                UninstallFocus();
-                // call the set focus with the focusHWND
-                if (focusHWND != NULL) {
-                    SetFocus(focusHWND);
+                std::cout << "Down arrow key pressed, uninstalling focus hooks via manager." << std::endl;
+                WindowsApiHookManager::GetInstance().UninstallFocusControlHooks();
+
+                // Restore original behavior if parameters were stored by hooks (now in WindowsApiHookManager g_vars)
+                // This part needs careful review as direct SetFocus/BringWindowToTop/SetWindowPos
+                // might interfere with or be re-hooked if not handled carefully.
+                // The new hook detours currently do not call original functions.
+                // This logic might be better placed inside the UninstallFocusControlHooks or as a separate method.
+                if (WindowsApiHookManager::g_focusHWND != NULL) {
+                    // This call will be to the original SetFocus IF the hook is uninstalled.
+                    // If SetFocus is ALSO a managed hook, this could call the detour or original.
+                    // For now, assume it calls original after hooks are out.
+                    SetFocus(WindowsApiHookManager::g_focusHWND);
                 }
-                if (bringWindowToTopHWND != NULL) {
-                    BringWindowToTop(bringWindowToTopHWND);
+                if (WindowsApiHookManager::g_bringWindowToTopHWND != NULL) {
+                    BringWindowToTop(WindowsApiHookManager::g_bringWindowToTopHWND);
                 }
-                if (setWindowFocusHWND != NULL) {
-                    SetWindowPos(setWindowFocusHWND, setWindowFocushWndInsertAfter, setWindowFocusX, setWindowFocusY, setWindowFocuscx, setWindowFocuscy, setWindowFocusuFlags);
+                if (WindowsApiHookManager::g_setWindowPosParams.hasBeenCalled) {
+                     SetWindowPos(
+                        WindowsApiHookManager::g_setWindowPosParams.hWnd,
+                        WindowsApiHookManager::g_setWindowPosParams.hWndInsertAfter,
+                        WindowsApiHookManager::g_setWindowPosParams.X,
+                        WindowsApiHookManager::g_setWindowPosParams.Y,
+                        WindowsApiHookManager::g_setWindowPosParams.cx,
+                        WindowsApiHookManager::g_setWindowPosParams.cy,
+                        WindowsApiHookManager::g_setWindowPosParams.uFlags
+                    );
                 }
-                std::cout << "Down arrow key pressed, uninstalling focus hook." << std::endl;
+                std::cout << "Down arrow key: Restored focus/window state attempt." << std::endl;
                 break;
             }
         }
@@ -403,31 +107,69 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(hKeyboardHook, nCode, wParam, lParam);
 }
 
-// Place this in a suitable location in your existing code.
-void SetupKeyboardHook() {
-    hKeyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, nullptr, 0);
+// Keyboard hook setup thread function
+void SetupKeyboardHookThread() {
+    hKeyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, GetModuleHandle(NULL), 0);
+    if (!hKeyboardHook) {
+        std::cerr << "Failed to install keyboard hook. Error: " << GetLastError() << std::endl;
+        return;
+    }
+    std::cout << "Keyboard hook installed." << std::endl;
     MSG msg;
+    // Message loop for the keyboard hook thread
     while (GetMessage(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
+    std::cout << "Keyboard hook message loop terminating." << std::endl;
 }
+
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH:
         DisableThreadLibraryCalls(hModule);
-        // Start the hook setup in a new thread to keep DllMain non-blocking
-        InstallHook(); // Sets up your custom hooks
-        std::thread([]() {
-            SetupKeyboardHook(); // Sets up the keyboard hook
-            }).detach();
-            break;
+        std::cout << "DLL_PROCESS_ATTACH: Initializing UndownUnlock..." << std::endl;
+
+        // Initialize and Install hooks using the new manager
+        InitializeAllHooks(); // This initializes Windows API hooks
+
+        // Initialize DirectX hooks
+        std::cout << "DLL_PROCESS_ATTACH: Initializing DirectX hooks..." << std::endl;
+        DirectXHookManager::GetInstance().Initialize();
+
+        // Start the keyboard hook in a new thread
+        // Consider managing this thread more robustly (e.g., storing thread handle, proper termination)
+        std::thread(SetupKeyboardHookThread).detach();
+
+        std::cout << "DLL_PROCESS_ATTACH: UndownUnlock initialization complete." << std::endl;
+        break;
+
     case DLL_PROCESS_DETACH:
-        UninstallHook(); // Uninstall your custom hooks
+        std::cout << "DLL_PROCESS_DETACH: Shutting down UndownUnlock..." << std::endl;
+
+        // Uninstall DirectX hooks first (if they might depend on API hooks or other systems)
+        std::cout << "DLL_PROCESS_DETACH: Shutting down DirectX hooks..." << std::endl;
+        DirectXHookManager::GetInstance().Shutdown();
+
+        // Uninstall all Windows API hooks using the new manager
+        TeardownAllHooks();
+
+        // Uninstall the keyboard hook
         if (hKeyboardHook != nullptr) {
-            UnhookWindowsHookEx(hKeyboardHook); // Uninstall the keyboard hook
+            if (UnhookWindowsHookEx(hKeyboardHook)) {
+                std::cout << "Keyboard hook uninstalled successfully." << std::endl;
+            } else {
+                std::cerr << "Failed to uninstall keyboard hook. Error: " << GetLastError() << std::endl;
+            }
+            hKeyboardHook = nullptr;
         }
+        // Signal the keyboard hook thread to terminate its message loop (if it's not already done)
+        // This is tricky as PostThreadMessage might not work if the thread is already gone or stuck.
+        // A more robust solution would use an event or a shared flag.
+        // For now, relying on process termination to clean up the detached thread.
+
+        std::cout << "DLL_PROCESS_DETACH: UndownUnlock shutdown complete." << std::endl;
         break;
     }
     return TRUE;

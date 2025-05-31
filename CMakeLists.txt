@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.12)
 project(UndownUnlock VERSION 1.0.0 LANGUAGES CXX)
 
+# Include FetchContent module for managing dependencies
+include(FetchContent)
+
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,6 +51,14 @@ set(TEST_CLIENT_SOURCES
 # Add the DLL hooks library
 add_library(UndownUnlockDXHook SHARED ${DLL_HOOKS_SOURCES})
 
+# Copy the DLL to the runtime output directory so executables can find it
+add_custom_command(TARGET UndownUnlockDXHook POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    $<TARGET_FILE:UndownUnlockDXHook>
+    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    COMMENT "Copying UndownUnlockDXHook DLL to runtime directory"
+)
+
 # Set up the DLL properties
 target_compile_definitions(UndownUnlockDXHook PRIVATE
     WIN32
@@ -90,6 +101,13 @@ configure_file(
 option(BUILD_TESTING "Build tests" ON)
 if(BUILD_TESTING)
     enable_testing()
+
+    # Declare Google Test dependency (fetched if not found by find_package in tests/CMakeLists.txt)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG release-1.11.0
+    )
     add_subdirectory(tests)
 endif()
 
