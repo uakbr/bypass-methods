@@ -18,6 +18,8 @@ set(TEST_SOURCES
     test_com_interface_wrapper.cpp
     test_raii_wrappers.cpp
     test_error_handler.cpp
+    test_dx_hook_core.cpp
+    test_shared_memory_transport.cpp
 )
 
 # Create test executable

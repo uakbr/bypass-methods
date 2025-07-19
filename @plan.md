@@ -169,15 +169,15 @@ This was the primary blocker for development velocity. The new build system elim
    - ✅ Create comprehensive test suite for error handler
    - ✅ Update test configuration to include utility tests
 
-2. **Critical Component Migration** (Week 2-3)
-   - Update `src/hooks/dx_hook_core.cpp` - migrate to smart pointers
-   - Update `src/hooks/new_dx_hook_core.cpp` - add RAII patterns
-   - Update `src/hooks/swap_chain_hook.cpp` - improve error handling
-   - Update `src/shared/shared_memory_transport.cpp` - add RAII wrappers
-   - Update `src/memory/pattern_scanner.cpp` - smart pointer migration
-   - Update `src/frame/frame_extractor.cpp` - enhance error recovery
-   - Update `src/hooks/windows_api/windows_api_hooks.cpp` - RAII patterns
-   - Update `src/hooks/windows_api/hooked_functions.cpp` - error handling
+2. **Critical Component Migration** (Week 2-3) ⏳ **IN PROGRESS**
+   - ✅ Update `src/hooks/dx_hook_core.cpp` - migrate to smart pointers and add comprehensive error handling
+   - ✅ Update `src/shared/shared_memory_transport.cpp` - add RAII wrappers and performance monitoring
+   - ⏳ Update `src/hooks/new_dx_hook_core.cpp` - add RAII patterns
+   - ⏳ Update `src/hooks/swap_chain_hook.cpp` - improve error handling
+   - ⏳ Update `src/memory/pattern_scanner.cpp` - smart pointer migration
+   - ⏳ Update `src/frame/frame_extractor.cpp` - enhance error recovery
+   - ⏳ Update `src/hooks/windows_api/windows_api_hooks.cpp` - RAII patterns
+   - ⏳ Update `src/hooks/windows_api/hooked_functions.cpp` - error handling
 
 3. **Memory Leak Detection** (Week 4)
    - Create `include/utils/memory_tracker.h` with leak detection
