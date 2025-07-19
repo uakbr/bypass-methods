@@ -39,6 +39,10 @@ set(DLL_HOOKS_SOURCES
     src/utils/memory_tracker.cpp
     src/utils/performance_monitor.cpp
     src/utils/crash_reporter.cpp
+    # Performance optimization components
+    src/optimization/memory_pool.cpp
+    src/optimization/thread_pool.cpp
+    src/optimization/performance_optimizer.cpp
 )
 
 # Define source files for the test client

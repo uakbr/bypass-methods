@@ -30,6 +30,8 @@ set(TEST_SOURCES
     test_keyboard_hook.cpp
     test_dx_signatures.cpp
     test_lockdown_signatures.cpp
+    # Performance optimization tests
+    performance/test_optimizations.cpp
 )
 
 # Create test executable
