@@ -1,397 +1,1046 @@
-#include "include/utils/raii_wrappers.h"
-#include "include/utils/error_handler.h"
+#include "utils/raii_wrappers.h"
+#include "utils/error_handler.h"
 #include <sstream>
 #include <iomanip>
 
-namespace UndownUnlock::Utils {
+namespace utils {
 
-// Implementation of RAII wrapper classes
-// Most functionality is already implemented in the header file as inline functions
-// This file contains additional implementation details and utility functions
+// Forward declaration
+extern ErrorHandler* g_error_handler;
 
-namespace {
-    // Helper function to format handle information for logging
-    std::string format_handle_info(HANDLE handle, const std::string& operation) {
-        std::ostringstream oss;
-        oss << "Handle " << std::hex << std::setw(8) << std::setfill('0') 
-            << reinterpret_cast<uintptr_t>(handle) << " " << operation;
-        return oss.str();
+// HandleWrapper implementation
+HandleWrapper::HandleWrapper(HANDLE handle)
+    : handle_(handle), error_handler_(nullptr), resource_name_("Handle") {
+}
+
+HandleWrapper::~HandleWrapper() {
+    reset();
+}
+
+HandleWrapper::HandleWrapper(HandleWrapper&& other) noexcept
+    : handle_(other.handle_), error_handler_(other.error_handler_), 
+      resource_name_(std::move(other.resource_name_)) {
+    other.handle_ = INVALID_HANDLE_VALUE;
+    other.error_handler_ = nullptr;
+}
+
+HandleWrapper& HandleWrapper::operator=(HandleWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        handle_ = other.handle_;
+        error_handler_ = other.error_handler_;
+        resource_name_ = std::move(other.resource_name_);
+        other.handle_ = INVALID_HANDLE_VALUE;
+        other.error_handler_ = nullptr;
     }
+    return *this;
+}
 
-    // Helper function to check if handle is valid
-    bool is_valid_handle(HANDLE handle) {
-        return handle != INVALID_HANDLE_VALUE && handle != nullptr;
+HANDLE HandleWrapper::release() {
+    HANDLE temp = handle_;
+    handle_ = INVALID_HANDLE_VALUE;
+    return temp;
+}
+
+void HandleWrapper::reset(HANDLE new_handle) {
+    if (is_valid()) {
+        if (!handle_utils::close_handle_safe(handle_, "HandleWrapper::reset")) {
+            log_error("Failed to close handle in reset");
+        }
     }
+    handle_ = new_handle;
+}
 
-    // Helper function to safely close handle
-    void safe_close_handle(HANDLE handle) {
-        if (is_valid_handle(handle)) {
-            if (!CloseHandle(handle)) {
-                DWORD error = GetLastError();
-                LOG_WARNING("Failed to close handle", ErrorCategory::WINDOWS_API);
-                LOG_WINDOWS_ERROR("CloseHandle failed", ErrorCategory::WINDOWS_API);
+std::string HandleWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void HandleWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + resource_name_,
+            ErrorCategory::WINDOWS_API,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// ModuleWrapper implementation
+ModuleWrapper::ModuleWrapper(HMODULE module)
+    : module_(module), error_handler_(nullptr), module_name_("Module") {
+}
+
+ModuleWrapper::~ModuleWrapper() {
+    reset();
+}
+
+ModuleWrapper::ModuleWrapper(ModuleWrapper&& other) noexcept
+    : module_(other.module_), error_handler_(other.error_handler_),
+      module_name_(std::move(other.module_name_)) {
+    other.module_ = nullptr;
+    other.error_handler_ = nullptr;
+}
+
+ModuleWrapper& ModuleWrapper::operator=(ModuleWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        module_ = other.module_;
+        error_handler_ = other.error_handler_;
+        module_name_ = std::move(other.module_name_);
+        other.module_ = nullptr;
+        other.error_handler_ = nullptr;
+    }
+    return *this;
+}
+
+HMODULE ModuleWrapper::release() {
+    HMODULE temp = module_;
+    module_ = nullptr;
+    return temp;
+}
+
+void ModuleWrapper::reset(HMODULE new_module) {
+    if (is_valid()) {
+        if (!handle_utils::free_library_safe(module_, "ModuleWrapper::reset")) {
+            log_error("Failed to free library in reset");
+        }
+    }
+    module_ = new_module;
+}
+
+std::string ModuleWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void ModuleWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + module_name_,
+            ErrorCategory::WINDOWS_API,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// DeviceContextWrapper implementation
+DeviceContextWrapper::DeviceContextWrapper(HDC dc)
+    : dc_(dc), error_handler_(nullptr), context_name_("DeviceContext"), is_window_dc_(false) {
+}
+
+DeviceContextWrapper::~DeviceContextWrapper() {
+    reset();
+}
+
+DeviceContextWrapper::DeviceContextWrapper(DeviceContextWrapper&& other) noexcept
+    : dc_(other.dc_), error_handler_(other.error_handler_),
+      context_name_(std::move(other.context_name_)), is_window_dc_(other.is_window_dc_) {
+    other.dc_ = nullptr;
+    other.error_handler_ = nullptr;
+    other.is_window_dc_ = false;
+}
+
+DeviceContextWrapper& DeviceContextWrapper::operator=(DeviceContextWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        dc_ = other.dc_;
+        error_handler_ = other.error_handler_;
+        context_name_ = std::move(other.context_name_);
+        is_window_dc_ = other.is_window_dc_;
+        other.dc_ = nullptr;
+        other.error_handler_ = nullptr;
+        other.is_window_dc_ = false;
+    }
+    return *this;
+}
+
+HDC DeviceContextWrapper::release() {
+    HDC temp = dc_;
+    dc_ = nullptr;
+    return temp;
+}
+
+void DeviceContextWrapper::reset(HDC new_dc) {
+    if (is_valid()) {
+        if (is_window_dc_) {
+            // For window DCs, we need the window handle to release properly
+            // This is a simplified implementation
+            if (!handle_utils::delete_dc_safe(dc_, "DeviceContextWrapper::reset")) {
+                log_error("Failed to delete DC in reset");
+            }
+        } else {
+            if (!handle_utils::delete_dc_safe(dc_, "DeviceContextWrapper::reset")) {
+                log_error("Failed to delete DC in reset");
+            }
+        }
+    }
+    dc_ = new_dc;
+    is_window_dc_ = false;
+}
+
+std::string DeviceContextWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void DeviceContextWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + context_name_,
+            ErrorCategory::GRAPHICS,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// VirtualMemoryWrapper implementation
+VirtualMemoryWrapper::VirtualMemoryWrapper(LPVOID address, SIZE_T size)
+    : address_(address), size_(size), error_handler_(nullptr), memory_name_("VirtualMemory") {
+}
+
+VirtualMemoryWrapper::~VirtualMemoryWrapper() {
+    reset();
+}
+
+VirtualMemoryWrapper::VirtualMemoryWrapper(VirtualMemoryWrapper&& other) noexcept
+    : address_(other.address_), size_(other.size_), error_handler_(other.error_handler_),
+      memory_name_(std::move(other.memory_name_)) {
+    other.address_ = nullptr;
+    other.size_ = 0;
+    other.error_handler_ = nullptr;
+}
+
+VirtualMemoryWrapper& VirtualMemoryWrapper::operator=(VirtualMemoryWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        address_ = other.address_;
+        size_ = other.size_;
+        error_handler_ = other.error_handler_;
+        memory_name_ = std::move(other.memory_name_);
+        other.address_ = nullptr;
+        other.size_ = 0;
+        other.error_handler_ = nullptr;
+    }
+    return *this;
+}
+
+LPVOID VirtualMemoryWrapper::release() {
+    LPVOID temp = address_;
+    address_ = nullptr;
+    size_ = 0;
+    return temp;
+}
+
+void VirtualMemoryWrapper::reset(LPVOID new_address, SIZE_T new_size) {
+    if (is_valid()) {
+        if (!handle_utils::virtual_free_safe(address_, size_, MEM_RELEASE, "VirtualMemoryWrapper::reset")) {
+            log_error("Failed to free virtual memory in reset");
+        }
+    }
+    address_ = new_address;
+    size_ = new_size;
+}
+
+std::string VirtualMemoryWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void VirtualMemoryWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + memory_name_,
+            ErrorCategory::MEMORY,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// CriticalSectionWrapper implementation
+CriticalSectionWrapper::CriticalSectionWrapper()
+    : error_handler_(nullptr), section_name_("CriticalSection"), initialized_(false) {
+    try {
+        InitializeCriticalSection(&cs_);
+        initialized_ = true;
+    } catch (...) {
+        if (error_handler_) {
+            error_handler_->error(
+                "Failed to initialize critical section",
+                ErrorCategory::SYNCHRONIZATION,
+                __FUNCTION__, __FILE__, __LINE__
+            );
+        }
+    }
+}
+
+CriticalSectionWrapper::~CriticalSectionWrapper() {
+    if (initialized_) {
+        try {
+            DeleteCriticalSection(&cs_);
+        } catch (...) {
+            // Destructor should not throw
+        }
+    }
+}
+
+CriticalSectionWrapper::CriticalSectionWrapper(CriticalSectionWrapper&& other) noexcept
+    : cs_(other.cs_), error_handler_(other.error_handler_),
+      section_name_(std::move(other.section_name_)), initialized_(other.initialized_) {
+    other.initialized_ = false;
+    other.error_handler_ = nullptr;
+}
+
+CriticalSectionWrapper& CriticalSectionWrapper::operator=(CriticalSectionWrapper&& other) noexcept {
+    if (this != &other) {
+        if (initialized_) {
+            try {
+                DeleteCriticalSection(&cs_);
+            } catch (...) {
+                // Assignment operator should not throw
+            }
+        }
+        cs_ = other.cs_;
+        error_handler_ = other.error_handler_;
+        section_name_ = std::move(other.section_name_);
+        initialized_ = other.initialized_;
+        other.initialized_ = false;
+        other.error_handler_ = nullptr;
+    }
+    return *this;
+}
+
+void CriticalSectionWrapper::enter() {
+    if (initialized_) {
+        EnterCriticalSection(&cs_);
+    }
+}
+
+void CriticalSectionWrapper::leave() {
+    if (initialized_) {
+        LeaveCriticalSection(&cs_);
+    }
+}
+
+bool CriticalSectionWrapper::try_enter() {
+    if (initialized_) {
+        return TryEnterCriticalSection(&cs_) != 0;
+    }
+    return false;
+}
+
+std::string CriticalSectionWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void CriticalSectionWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + section_name_,
+            ErrorCategory::SYNCHRONIZATION,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// MutexWrapper implementation
+MutexWrapper::MutexWrapper(const std::string& name, bool initial_owner)
+    : error_handler_(nullptr), mutex_name_(name.empty() ? "Mutex" : name) {
+    mutex_ = CreateMutexA(nullptr, initial_owner, name.empty() ? nullptr : name.c_str());
+    if (!is_valid()) {
+        if (error_handler_) {
+            error_handler_->error(
+                "Failed to create mutex: " + mutex_name_,
+                ErrorCategory::SYNCHRONIZATION,
+                __FUNCTION__, __FILE__, __LINE__,
+                GetLastError()
+            );
+        }
+    }
+}
+
+MutexWrapper::~MutexWrapper() {
+    reset();
+}
+
+MutexWrapper::MutexWrapper(MutexWrapper&& other) noexcept
+    : mutex_(other.mutex_), error_handler_(other.error_handler_),
+      mutex_name_(std::move(other.mutex_name_)) {
+    other.mutex_ = INVALID_HANDLE_VALUE;
+    other.error_handler_ = nullptr;
+}
+
+MutexWrapper& MutexWrapper::operator=(MutexWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        mutex_ = other.mutex_;
+        error_handler_ = other.error_handler_;
+        mutex_name_ = std::move(other.mutex_name_);
+        other.mutex_ = INVALID_HANDLE_VALUE;
+        other.error_handler_ = nullptr;
+    }
+    return *this;
+}
+
+HANDLE MutexWrapper::release() {
+    HANDLE temp = mutex_;
+    mutex_ = INVALID_HANDLE_VALUE;
+    return temp;
+}
+
+bool MutexWrapper::wait(DWORD timeout) {
+    if (is_valid()) {
+        DWORD result = WaitForSingleObject(mutex_, timeout);
+        if (result == WAIT_OBJECT_0) {
+            return true;
+        } else if (result == WAIT_TIMEOUT) {
+            return false;
+        } else {
+            log_error("WaitForSingleObject failed");
+            return false;
+        }
+    }
+    return false;
+}
+
+bool MutexWrapper::release_mutex() {
+    if (is_valid()) {
+        return ReleaseMutex(mutex_) != 0;
+    }
+    return false;
+}
+
+void MutexWrapper::reset(HANDLE new_mutex) {
+    if (is_valid()) {
+        if (!handle_utils::close_handle_safe(mutex_, "MutexWrapper::reset")) {
+            log_error("Failed to close mutex in reset");
+        }
+    }
+    mutex_ = new_mutex;
+}
+
+std::string MutexWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void MutexWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + mutex_name_,
+            ErrorCategory::SYNCHRONIZATION,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// EventWrapper implementation
+EventWrapper::EventWrapper(const std::string& name, bool manual_reset, bool initial_state)
+    : error_handler_(nullptr), event_name_(name.empty() ? "Event" : name) {
+    event_ = CreateEventA(nullptr, manual_reset, initial_state, name.empty() ? nullptr : name.c_str());
+    if (!is_valid()) {
+        if (error_handler_) {
+            error_handler_->error(
+                "Failed to create event: " + event_name_,
+                ErrorCategory::SYNCHRONIZATION,
+                __FUNCTION__, __FILE__, __LINE__,
+                GetLastError()
+            );
+        }
+    }
+}
+
+EventWrapper::~EventWrapper() {
+    reset();
+}
+
+EventWrapper::EventWrapper(EventWrapper&& other) noexcept
+    : event_(other.event_), error_handler_(other.error_handler_),
+      event_name_(std::move(other.event_name_)) {
+    other.event_ = INVALID_HANDLE_VALUE;
+    other.error_handler_ = nullptr;
+}
+
+EventWrapper& EventWrapper::operator=(EventWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        event_ = other.event_;
+        error_handler_ = other.error_handler_;
+        event_name_ = std::move(other.event_name_);
+        other.event_ = INVALID_HANDLE_VALUE;
+        other.error_handler_ = nullptr;
+    }
+    return *this;
+}
+
+HANDLE EventWrapper::release() {
+    HANDLE temp = event_;
+    event_ = INVALID_HANDLE_VALUE;
+    return temp;
+}
+
+bool EventWrapper::wait(DWORD timeout) {
+    if (is_valid()) {
+        DWORD result = WaitForSingleObject(event_, timeout);
+        return result == WAIT_OBJECT_0;
+    }
+    return false;
+}
+
+bool EventWrapper::set() {
+    if (is_valid()) {
+        return SetEvent(event_) != 0;
+    }
+    return false;
+}
+
+bool EventWrapper::reset() {
+    if (is_valid()) {
+        return ResetEvent(event_) != 0;
+    }
+    return false;
+}
+
+bool EventWrapper::pulse() {
+    if (is_valid()) {
+        return PulseEvent(event_) != 0;
+    }
+    return false;
+}
+
+void EventWrapper::reset(HANDLE new_event) {
+    if (is_valid()) {
+        if (!handle_utils::close_handle_safe(event_, "EventWrapper::reset")) {
+            log_error("Failed to close event in reset");
+        }
+    }
+    event_ = new_event;
+}
+
+std::string EventWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void EventWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + event_name_,
+            ErrorCategory::SYNCHRONIZATION,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// SemaphoreWrapper implementation
+SemaphoreWrapper::SemaphoreWrapper(const std::string& name, LONG initial_count, LONG maximum_count)
+    : error_handler_(nullptr), semaphore_name_(name.empty() ? "Semaphore" : name) {
+    semaphore_ = CreateSemaphoreA(nullptr, initial_count, maximum_count, name.empty() ? nullptr : name.c_str());
+    if (!is_valid()) {
+        if (error_handler_) {
+            error_handler_->error(
+                "Failed to create semaphore: " + semaphore_name_,
+                ErrorCategory::SYNCHRONIZATION,
+                __FUNCTION__, __FILE__, __LINE__,
+                GetLastError()
+            );
+        }
+    }
+}
+
+SemaphoreWrapper::~SemaphoreWrapper() {
+    reset();
+}
+
+SemaphoreWrapper::SemaphoreWrapper(SemaphoreWrapper&& other) noexcept
+    : semaphore_(other.semaphore_), error_handler_(other.error_handler_),
+      semaphore_name_(std::move(other.semaphore_name_)) {
+    other.semaphore_ = INVALID_HANDLE_VALUE;
+    other.error_handler_ = nullptr;
+}
+
+SemaphoreWrapper& SemaphoreWrapper::operator=(SemaphoreWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        semaphore_ = other.semaphore_;
+        error_handler_ = other.error_handler_;
+        semaphore_name_ = std::move(other.semaphore_name_);
+        other.semaphore_ = INVALID_HANDLE_VALUE;
+        other.error_handler_ = nullptr;
+    }
+    return *this;
+}
+
+HANDLE SemaphoreWrapper::release() {
+    HANDLE temp = semaphore_;
+    semaphore_ = INVALID_HANDLE_VALUE;
+    return temp;
+}
+
+bool SemaphoreWrapper::wait(DWORD timeout) {
+    if (is_valid()) {
+        DWORD result = WaitForSingleObject(semaphore_, timeout);
+        return result == WAIT_OBJECT_0;
+    }
+    return false;
+}
+
+bool SemaphoreWrapper::release(LONG release_count) {
+    if (is_valid()) {
+        return ReleaseSemaphore(semaphore_, release_count, nullptr) != 0;
+    }
+    return false;
+}
+
+void SemaphoreWrapper::reset(HANDLE new_semaphore) {
+    if (is_valid()) {
+        if (!handle_utils::close_handle_safe(semaphore_, "SemaphoreWrapper::reset")) {
+            log_error("Failed to close semaphore in reset");
+        }
+    }
+    semaphore_ = new_semaphore;
+}
+
+std::string SemaphoreWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void SemaphoreWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + semaphore_name_,
+            ErrorCategory::SYNCHRONIZATION,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// ThreadWrapper implementation
+ThreadWrapper::ThreadWrapper(ThreadFunction func, const std::string& name)
+    : thread_(INVALID_HANDLE_VALUE), thread_id_(0), thread_func_(std::move(func)),
+      error_handler_(nullptr), thread_name_(name.empty() ? "Thread" : name) {
+    if (thread_func_) {
+        thread_ = CreateThread(nullptr, 0, thread_proc, this, 0, &thread_id_);
+        if (!is_valid()) {
+            if (error_handler_) {
+                error_handler_->error(
+                    "Failed to create thread: " + thread_name_,
+                    ErrorCategory::THREADING,
+                    __FUNCTION__, __FILE__, __LINE__,
+                    GetLastError()
+                );
             }
         }
     }
 }
 
-// Additional utility functions for RAII wrappers
-
-ScopedHandle create_scoped_handle(HANDLE handle) {
-    return ScopedHandle(handle);
+ThreadWrapper::~ThreadWrapper() {
+    reset();
 }
 
-ScopedHandle create_scoped_handle_from_process(DWORD process_id, DWORD desired_access, 
-                                              bool inherit_handle, DWORD flags) {
-    HANDLE handle = OpenProcess(desired_access, inherit_handle, process_id);
-    if (!is_valid_handle(handle)) {
-        LOG_ERROR("Failed to open process", ErrorCategory::PROCESS);
-        LOG_WINDOWS_ERROR("OpenProcess failed", ErrorCategory::PROCESS);
-        return ScopedHandle();
+ThreadWrapper::ThreadWrapper(ThreadWrapper&& other) noexcept
+    : thread_(other.thread_), thread_id_(other.thread_id_), thread_func_(std::move(other.thread_func_)),
+      error_handler_(other.error_handler_), thread_name_(std::move(other.thread_name_)) {
+    other.thread_ = INVALID_HANDLE_VALUE;
+    other.thread_id_ = 0;
+    other.error_handler_ = nullptr;
+}
+
+ThreadWrapper& ThreadWrapper::operator=(ThreadWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        thread_ = other.thread_;
+        thread_id_ = other.thread_id_;
+        thread_func_ = std::move(other.thread_func_);
+        error_handler_ = other.error_handler_;
+        thread_name_ = std::move(other.thread_name_);
+        other.thread_ = INVALID_HANDLE_VALUE;
+        other.thread_id_ = 0;
+        other.error_handler_ = nullptr;
     }
-    return ScopedHandle(handle);
+    return *this;
 }
 
-ScopedHandle create_scoped_handle_from_thread(DWORD thread_id, DWORD desired_access, 
-                                             bool inherit_handle, DWORD flags) {
-    HANDLE handle = OpenThread(desired_access, inherit_handle, thread_id);
-    if (!is_valid_handle(handle)) {
-        LOG_ERROR("Failed to open thread", ErrorCategory::THREAD);
-        LOG_WINDOWS_ERROR("OpenThread failed", ErrorCategory::THREAD);
-        return ScopedHandle();
+HANDLE ThreadWrapper::release() {
+    HANDLE temp = thread_;
+    thread_ = INVALID_HANDLE_VALUE;
+    thread_id_ = 0;
+    return temp;
+}
+
+bool ThreadWrapper::wait(DWORD timeout) {
+    if (is_valid()) {
+        DWORD result = WaitForSingleObject(thread_, timeout);
+        return result == WAIT_OBJECT_0;
     }
-    return ScopedHandle(handle);
+    return false;
 }
 
-ScopedHandle create_scoped_handle_from_file(const std::string& filename, DWORD desired_access,
-                                           DWORD share_mode, LPSECURITY_ATTRIBUTES security_attributes,
-                                           DWORD creation_disposition, DWORD flags_and_attributes,
-                                           HANDLE template_file) {
-    HANDLE handle = CreateFileA(filename.c_str(), desired_access, share_mode, security_attributes,
-                               creation_disposition, flags_and_attributes, template_file);
-    if (!is_valid_handle(handle)) {
-        LOG_ERROR("Failed to create/open file: " + filename, ErrorCategory::FILE_IO);
-        LOG_WINDOWS_ERROR("CreateFile failed", ErrorCategory::FILE_IO);
-        return ScopedHandle();
+bool ThreadWrapper::suspend() {
+    if (is_valid()) {
+        DWORD result = SuspendThread(thread_);
+        return result != (DWORD)-1;
     }
-    return ScopedHandle(handle);
+    return false;
 }
 
-ScopedHandle create_scoped_handle_from_mutex(const std::string& name, bool initial_owner,
-                                            LPSECURITY_ATTRIBUTES security_attributes) {
-    HANDLE handle = CreateMutexA(security_attributes, initial_owner, name.c_str());
-    if (!is_valid_handle(handle)) {
-        LOG_ERROR("Failed to create mutex: " + name, ErrorCategory::THREAD);
-        LOG_WINDOWS_ERROR("CreateMutex failed", ErrorCategory::THREAD);
-        return ScopedHandle();
+bool ThreadWrapper::resume() {
+    if (is_valid()) {
+        DWORD result = ResumeThread(thread_);
+        return result != (DWORD)-1;
     }
-    return ScopedHandle(handle);
+    return false;
 }
 
-ScopedHandle create_scoped_handle_from_event(const std::string& name, bool manual_reset,
-                                            bool initial_state, LPSECURITY_ATTRIBUTES security_attributes) {
-    HANDLE handle = CreateEventA(security_attributes, manual_reset, initial_state, name.c_str());
-    if (!is_valid_handle(handle)) {
-        LOG_ERROR("Failed to create event: " + name, ErrorCategory::THREAD);
-        LOG_WINDOWS_ERROR("CreateEvent failed", ErrorCategory::THREAD);
-        return ScopedHandle();
+bool ThreadWrapper::terminate(DWORD exit_code) {
+    if (is_valid()) {
+        return TerminateThread(thread_, exit_code) != 0;
     }
-    return ScopedHandle(handle);
+    return false;
 }
 
-ScopedHandle create_scoped_handle_from_semaphore(const std::string& name, LONG initial_count,
-                                                LONG maximum_count, LPSECURITY_ATTRIBUTES security_attributes) {
-    HANDLE handle = CreateSemaphoreA(security_attributes, initial_count, maximum_count, name.c_str());
-    if (!is_valid_handle(handle)) {
-        LOG_ERROR("Failed to create semaphore: " + name, ErrorCategory::THREAD);
-        LOG_WINDOWS_ERROR("CreateSemaphore failed", ErrorCategory::THREAD);
-        return ScopedHandle();
+DWORD ThreadWrapper::get_exit_code() const {
+    if (is_valid()) {
+        DWORD exit_code = 0;
+        if (GetExitCodeThread(thread_, &exit_code)) {
+            return exit_code;
+        }
     }
-    return ScopedHandle(handle);
+    return 0;
 }
 
-ScopedModuleHandle create_scoped_module_handle(const std::string& module_name) {
-    HMODULE handle = LoadLibraryA(module_name.c_str());
-    if (handle == nullptr) {
-        LOG_ERROR("Failed to load module: " + module_name, ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("LoadLibrary failed", ErrorCategory::WINDOWS_API);
-        return ScopedModuleHandle();
+void ThreadWrapper::reset(HANDLE new_thread) {
+    if (is_valid()) {
+        if (!handle_utils::close_handle_safe(thread_, "ThreadWrapper::reset")) {
+            log_error("Failed to close thread in reset");
+        }
     }
-    return ScopedModuleHandle(handle);
+    thread_ = new_thread;
+    thread_id_ = 0;
 }
 
-ScopedModuleHandle create_scoped_module_handle_from_address(LPVOID address) {
-    HMODULE handle = nullptr;
-    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | 
-                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                           reinterpret_cast<LPCSTR>(address), &handle)) {
-        LOG_ERROR("Failed to get module handle from address", ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("GetModuleHandleEx failed", ErrorCategory::WINDOWS_API);
-        return ScopedModuleHandle();
+std::string ThreadWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void ThreadWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + thread_name_,
+            ErrorCategory::THREADING,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
     }
-    return ScopedModuleHandle(handle);
 }
 
-ScopedDC create_scoped_dc_from_window(HWND window) {
-    if (window == nullptr) {
-        LOG_WARNING("Invalid window handle for DC creation", ErrorCategory::WINDOWS_API);
-        return ScopedDC();
+DWORD WINAPI ThreadWrapper::thread_proc(LPVOID param) {
+    ThreadWrapper* wrapper = static_cast<ThreadWrapper*>(param);
+    if (wrapper && wrapper->thread_func_) {
+        try {
+            return wrapper->thread_func_();
+        } catch (...) {
+            if (wrapper->error_handler_) {
+                wrapper->error_handler_->error(
+                    "Unhandled exception in thread: " + wrapper->thread_name_,
+                    ErrorCategory::THREADING,
+                    __FUNCTION__, __FILE__, __LINE__
+                );
+            }
+        }
     }
-    return ScopedDC(window);
+    return 1;
 }
 
-ScopedDC create_scoped_dc_from_desktop() {
-    HDC dc = GetDC(nullptr);
-    if (dc == nullptr) {
-        LOG_ERROR("Failed to get desktop DC", ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("GetDC failed", ErrorCategory::WINDOWS_API);
-        return ScopedDC();
+// FileMappingWrapper implementation
+FileMappingWrapper::FileMappingWrapper(HANDLE file, const std::string& name)
+    : error_handler_(nullptr), mapping_name_(name.empty() ? "FileMapping" : name) {
+    mapping_ = CreateFileMappingA(file, nullptr, PAGE_READWRITE, 0, 0, name.empty() ? nullptr : name.c_str());
+    if (!is_valid()) {
+        if (error_handler_) {
+            error_handler_->error(
+                "Failed to create file mapping: " + mapping_name_,
+                ErrorCategory::FILE_IO,
+                __FUNCTION__, __FILE__, __LINE__,
+                GetLastError()
+            );
+        }
     }
-    return ScopedDC(dc);
 }
 
-ScopedVirtualMemory create_scoped_virtual_memory(SIZE_T size, DWORD allocation_type,
-                                                DWORD protection) {
-    LPVOID address = VirtualAlloc(nullptr, size, allocation_type, protection);
-    if (address == nullptr) {
-        LOG_ERROR("Failed to allocate virtual memory", ErrorCategory::MEMORY);
-        LOG_WINDOWS_ERROR("VirtualAlloc failed", ErrorCategory::MEMORY);
-        return ScopedVirtualMemory();
+FileMappingWrapper::~FileMappingWrapper() {
+    reset();
+}
+
+FileMappingWrapper::FileMappingWrapper(FileMappingWrapper&& other) noexcept
+    : mapping_(other.mapping_), error_handler_(other.error_handler_),
+      mapping_name_(std::move(other.mapping_name_)) {
+    other.mapping_ = INVALID_HANDLE_VALUE;
+    other.error_handler_ = nullptr;
+}
+
+FileMappingWrapper& FileMappingWrapper::operator=(FileMappingWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        mapping_ = other.mapping_;
+        error_handler_ = other.error_handler_;
+        mapping_name_ = std::move(other.mapping_name_);
+        other.mapping_ = INVALID_HANDLE_VALUE;
+        other.error_handler_ = nullptr;
     }
-    return ScopedVirtualMemory(address, size);
+    return *this;
 }
 
-ScopedVirtualMemory create_scoped_virtual_memory_at(LPVOID address, SIZE_T size,
-                                                   DWORD allocation_type, DWORD protection) {
-    LPVOID allocated_address = VirtualAlloc(address, size, allocation_type, protection);
-    if (allocated_address == nullptr) {
-        LOG_ERROR("Failed to allocate virtual memory at specified address", ErrorCategory::MEMORY);
-        LOG_WINDOWS_ERROR("VirtualAlloc failed", ErrorCategory::MEMORY);
-        return ScopedVirtualMemory();
+HANDLE FileMappingWrapper::release() {
+    HANDLE temp = mapping_;
+    mapping_ = INVALID_HANDLE_VALUE;
+    return temp;
+}
+
+void FileMappingWrapper::reset(HANDLE new_mapping) {
+    if (is_valid()) {
+        if (!handle_utils::close_handle_safe(mapping_, "FileMappingWrapper::reset")) {
+            log_error("Failed to close file mapping in reset");
+        }
     }
-    return ScopedVirtualMemory(allocated_address, size);
+    mapping_ = new_mapping;
 }
 
-// Utility functions for handle operations
+std::string FileMappingWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
 
-bool duplicate_handle(HANDLE source_handle, HANDLE source_process, HANDLE target_process,
-                     LPHANDLE target_handle, DWORD desired_access, bool inherit_handle,
-                     DWORD options) {
-    if (!DuplicateHandle(source_process, source_handle, target_process, target_handle,
-                        desired_access, inherit_handle, options)) {
-        LOG_ERROR("Failed to duplicate handle", ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("DuplicateHandle failed", ErrorCategory::WINDOWS_API);
-        return false;
+void FileMappingWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + mapping_name_,
+            ErrorCategory::FILE_IO,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// FileMappingViewWrapper implementation
+FileMappingViewWrapper::FileMappingViewWrapper(HANDLE mapping, const std::string& name)
+    : error_handler_(nullptr), view_name_(name.empty() ? "FileMappingView" : name) {
+    view_ = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+    if (!is_valid()) {
+        if (error_handler_) {
+            error_handler_->error(
+                "Failed to map view of file: " + view_name_,
+                ErrorCategory::FILE_IO,
+                __FUNCTION__, __FILE__, __LINE__,
+                GetLastError()
+            );
+        }
+    }
+}
+
+FileMappingViewWrapper::~FileMappingViewWrapper() {
+    reset();
+}
+
+FileMappingViewWrapper::FileMappingViewWrapper(FileMappingViewWrapper&& other) noexcept
+    : view_(other.view_), error_handler_(other.error_handler_),
+      view_name_(std::move(other.view_name_)) {
+    other.view_ = nullptr;
+    other.error_handler_ = nullptr;
+}
+
+FileMappingViewWrapper& FileMappingViewWrapper::operator=(FileMappingViewWrapper&& other) noexcept {
+    if (this != &other) {
+        reset();
+        view_ = other.view_;
+        error_handler_ = other.error_handler_;
+        view_name_ = std::move(other.view_name_);
+        other.view_ = nullptr;
+        other.error_handler_ = nullptr;
+    }
+    return *this;
+}
+
+LPVOID FileMappingViewWrapper::release() {
+    LPVOID temp = view_;
+    view_ = nullptr;
+    return temp;
+}
+
+void FileMappingViewWrapper::reset(LPVOID new_view) {
+    if (is_valid()) {
+        if (!handle_utils::unmap_view_of_file_safe(view_, "FileMappingViewWrapper::reset")) {
+            log_error("Failed to unmap view of file in reset");
+        }
+    }
+    view_ = new_view;
+}
+
+std::string FileMappingViewWrapper::get_last_error_message() const {
+    return handle_utils::get_last_error_message();
+}
+
+void FileMappingViewWrapper::log_error(const std::string& operation, DWORD error_code) const {
+    if (error_handler_) {
+        error_handler_->error(
+            operation + " failed for " + view_name_,
+            ErrorCategory::FILE_IO,
+            __FUNCTION__, __FILE__, __LINE__,
+            error_code
+        );
+    }
+}
+
+// Handle utilities implementation
+namespace handle_utils {
+
+bool close_handle_safe(HANDLE handle, const std::string& operation) {
+    if (handle != INVALID_HANDLE_VALUE && handle != nullptr) {
+        if (!CloseHandle(handle)) {
+            DWORD error = GetLastError();
+            // Log error if error handler is available
+            return false;
+        }
     }
     return true;
 }
 
-bool get_handle_information(HANDLE handle, PDWORD flags) {
-    if (!GetHandleInformation(handle, flags)) {
-        LOG_ERROR("Failed to get handle information", ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("GetHandleInformation failed", ErrorCategory::WINDOWS_API);
-        return false;
+bool free_library_safe(HMODULE module, const std::string& operation) {
+    if (module != nullptr) {
+        if (!FreeLibrary(module)) {
+            DWORD error = GetLastError();
+            // Log error if error handler is available
+            return false;
+        }
     }
     return true;
 }
 
-bool set_handle_information(HANDLE handle, DWORD mask, DWORD flags) {
-    if (!SetHandleInformation(handle, mask, flags)) {
-        LOG_ERROR("Failed to set handle information", ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("SetHandleInformation failed", ErrorCategory::WINDOWS_API);
-        return false;
+bool delete_dc_safe(HDC dc, const std::string& operation) {
+    if (dc != nullptr) {
+        if (!DeleteDC(dc)) {
+            DWORD error = GetLastError();
+            // Log error if error handler is available
+            return false;
+        }
     }
     return true;
 }
 
-// Utility functions for module operations
-
-FARPROC get_proc_address(HMODULE module, const std::string& proc_name) {
-    FARPROC proc = GetProcAddress(module, proc_name.c_str());
-    if (proc == nullptr) {
-        LOG_ERROR("Failed to get procedure address: " + proc_name, ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("GetProcAddress failed", ErrorCategory::WINDOWS_API);
-    }
-    return proc;
-}
-
-FARPROC get_proc_address_by_ordinal(HMODULE module, DWORD ordinal) {
-    FARPROC proc = GetProcAddress(module, reinterpret_cast<LPCSTR>(ordinal));
-    if (proc == nullptr) {
-        LOG_ERROR("Failed to get procedure address by ordinal: " + std::to_string(ordinal), 
-                  ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("GetProcAddress failed", ErrorCategory::WINDOWS_API);
-    }
-    return proc;
-}
-
-// Utility functions for DC operations
-
-bool bit_blt(HDC dest_dc, int dest_x, int dest_y, int dest_width, int dest_height,
-             HDC source_dc, int source_x, int source_y, DWORD raster_operation) {
-    if (!BitBlt(dest_dc, dest_x, dest_y, dest_width, dest_height,
-                source_dc, source_x, source_y, raster_operation)) {
-        LOG_ERROR("Failed to perform BitBlt operation", ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("BitBlt failed", ErrorCategory::WINDOWS_API);
-        return false;
+bool release_dc_safe(HWND window, HDC dc, const std::string& operation) {
+    if (dc != nullptr && window != nullptr) {
+        if (ReleaseDC(window, dc) == 0) {
+            DWORD error = GetLastError();
+            // Log error if error handler is available
+            return false;
+        }
     }
     return true;
 }
 
-bool stretch_blt(HDC dest_dc, int dest_x, int dest_y, int dest_width, int dest_height,
-                HDC source_dc, int source_x, int source_y, int source_width, int source_height,
-                DWORD raster_operation) {
-    if (!StretchBlt(dest_dc, dest_x, dest_y, dest_width, dest_height,
-                    source_dc, source_x, source_y, source_width, source_height,
-                    raster_operation)) {
-        LOG_ERROR("Failed to perform StretchBlt operation", ErrorCategory::WINDOWS_API);
-        LOG_WINDOWS_ERROR("StretchBlt failed", ErrorCategory::WINDOWS_API);
-        return false;
+bool virtual_free_safe(LPVOID address, SIZE_T size, DWORD free_type, const std::string& operation) {
+    if (address != nullptr && size > 0) {
+        if (!VirtualFree(address, 0, free_type)) {
+            DWORD error = GetLastError();
+            // Log error if error handler is available
+            return false;
+        }
     }
     return true;
 }
 
-// Utility functions for virtual memory operations
-
-bool virtual_protect(LPVOID address, SIZE_T size, DWORD new_protection, PDWORD old_protection) {
-    if (!VirtualProtect(address, size, new_protection, old_protection)) {
-        LOG_ERROR("Failed to change virtual memory protection", ErrorCategory::MEMORY);
-        LOG_WINDOWS_ERROR("VirtualProtect failed", ErrorCategory::MEMORY);
-        return false;
+bool unmap_view_of_file_safe(LPVOID base_address, const std::string& operation) {
+    if (base_address != nullptr) {
+        if (!UnmapViewOfFile(base_address)) {
+            DWORD error = GetLastError();
+            // Log error if error handler is available
+            return false;
+        }
     }
     return true;
 }
 
-bool virtual_query(LPVOID address, PMEMORY_BASIC_INFORMATION buffer, SIZE_T length) {
-    SIZE_T result = VirtualQuery(address, buffer, length);
-    if (result == 0) {
-        LOG_ERROR("Failed to query virtual memory information", ErrorCategory::MEMORY);
-        LOG_WINDOWS_ERROR("VirtualQuery failed", ErrorCategory::MEMORY);
-        return false;
+bool is_valid_handle(HANDLE handle) {
+    return handle != INVALID_HANDLE_VALUE && handle != nullptr;
+}
+
+bool is_valid_module(HMODULE module) {
+    return module != nullptr;
+}
+
+bool is_valid_dc(HDC dc) {
+    return dc != nullptr;
+}
+
+HANDLE duplicate_handle_safe(HANDLE source, const std::string& operation) {
+    if (!is_valid_handle(source)) {
+        return INVALID_HANDLE_VALUE;
     }
-    return true;
-}
-
-bool virtual_lock(LPVOID address, SIZE_T size) {
-    if (!VirtualLock(address, size)) {
-        LOG_ERROR("Failed to lock virtual memory", ErrorCategory::MEMORY);
-        LOG_WINDOWS_ERROR("VirtualLock failed", ErrorCategory::MEMORY);
-        return false;
+    
+    HANDLE duplicate = INVALID_HANDLE_VALUE;
+    if (!DuplicateHandle(GetCurrentProcess(), source, GetCurrentProcess(), &duplicate, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+        DWORD error = GetLastError();
+        // Log error if error handler is available
+        return INVALID_HANDLE_VALUE;
     }
-    return true;
+    
+    return duplicate;
 }
 
-bool virtual_unlock(LPVOID address, SIZE_T size) {
-    if (!VirtualUnlock(address, size)) {
-        LOG_ERROR("Failed to unlock virtual memory", ErrorCategory::MEMORY);
-        LOG_WINDOWS_ERROR("VirtualUnlock failed", ErrorCategory::MEMORY);
-        return false;
+std::string get_system_error_message(DWORD error_code) {
+    if (error_code == 0) {
+        return "No error";
     }
-    return true;
-}
-
-// Utility functions for critical section operations
-
-void initialize_critical_section_ex(CRITICAL_SECTION* critical_section, DWORD spin_count,
-                                   DWORD flags) {
-    if (!InitializeCriticalSectionEx(critical_section, spin_count, flags)) {
-        LOG_ERROR("Failed to initialize critical section", ErrorCategory::THREAD);
-        LOG_WINDOWS_ERROR("InitializeCriticalSectionEx failed", ErrorCategory::THREAD);
+    
+    LPSTR message_buffer = nullptr;
+    DWORD length = FormatMessageA(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        error_code,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        reinterpret_cast<LPSTR>(&message_buffer),
+        0,
+        nullptr
+    );
+    
+    if (length == 0 || message_buffer == nullptr) {
+        return "Unknown error code: " + std::to_string(error_code);
     }
-}
-
-bool try_enter_critical_section(CRITICAL_SECTION* critical_section) {
-    return TryEnterCriticalSection(critical_section) != 0;
-}
-
-// Utility functions for synchronization objects
-
-DWORD wait_for_single_object(HANDLE handle, DWORD timeout) {
-    DWORD result = WaitForSingleObject(handle, timeout);
-    if (result == WAIT_FAILED) {
-        LOG_ERROR("Failed to wait for single object", ErrorCategory::THREAD);
-        LOG_WINDOWS_ERROR("WaitForSingleObject failed", ErrorCategory::THREAD);
+    
+    std::string message(message_buffer);
+    LocalFree(message_buffer);
+    
+    // Remove trailing newlines and spaces
+    while (!message.empty() && (message.back() == '\n' || message.back() == '\r' || message.back() == ' ')) {
+        message.pop_back();
     }
-    return result;
+    
+    return message;
 }
 
-DWORD wait_for_multiple_objects(DWORD count, const HANDLE* handles, bool wait_all, DWORD timeout) {
-    DWORD result = WaitForMultipleObjects(count, handles, wait_all, timeout);
-    if (result == WAIT_FAILED) {
-        LOG_ERROR("Failed to wait for multiple objects", ErrorCategory::THREAD);
-        LOG_WINDOWS_ERROR("WaitForMultipleObjects failed", ErrorCategory::THREAD);
-    }
-    return result;
+std::string get_last_error_message() {
+    return get_system_error_message(GetLastError());
 }
 
-// Utility functions for handle validation
-
-bool is_process_handle(HANDLE handle) {
-    DWORD flags = 0;
-    if (!GetHandleInformation(handle, &flags)) {
-        return false;
-    }
-    return (flags & HANDLE_FLAG_PROTECT_FROM_CLOSE) == 0;
+std::string get_resource_name(HANDLE handle) {
+    // This is a simplified implementation
+    // In a real implementation, you might query the handle type and get more specific information
+    return "Handle(" + std::to_string(reinterpret_cast<uintptr_t>(handle)) + ")";
 }
 
-bool is_thread_handle(HANDLE handle) {
-    DWORD flags = 0;
-    if (!GetHandleInformation(handle, &flags)) {
-        return false;
-    }
-    return (flags & HANDLE_FLAG_PROTECT_FROM_CLOSE) == 0;
+std::string get_resource_name(HMODULE module) {
+    // This is a simplified implementation
+    // In a real implementation, you might get the module name
+    return "Module(" + std::to_string(reinterpret_cast<uintptr_t>(module)) + ")";
 }
 
-bool is_file_handle(HANDLE handle) {
-    DWORD file_type = GetFileType(handle);
-    return file_type == FILE_TYPE_DISK || file_type == FILE_TYPE_CHAR || file_type == FILE_TYPE_PIPE;
+std::string get_resource_name(HDC dc) {
+    // This is a simplified implementation
+    // In a real implementation, you might get the DC type and associated window
+    return "DC(" + std::to_string(reinterpret_cast<uintptr_t>(dc)) + ")";
 }
 
-// Utility functions for handle information
+} // namespace handle_utils
 
-std::string get_handle_type_string(HANDLE handle) {
-    DWORD file_type = GetFileType(handle);
-    switch (file_type) {
-        case FILE_TYPE_DISK:
-            return "FILE_TYPE_DISK";
-        case FILE_TYPE_CHAR:
-            return "FILE_TYPE_CHAR";
-        case FILE_TYPE_PIPE:
-            return "FILE_TYPE_PIPE";
-        case FILE_TYPE_REMOTE:
-            return "FILE_TYPE_REMOTE";
-        case FILE_TYPE_UNKNOWN:
-            return "FILE_TYPE_UNKNOWN";
-        default:
-            return "UNKNOWN_TYPE";
-    }
-}
-
-DWORD get_handle_flags(HANDLE handle) {
-    DWORD flags = 0;
-    if (!GetHandleInformation(handle, &flags)) {
-        return 0;
-    }
-    return flags;
-}
-
-// Utility functions for handle debugging
-
-void log_handle_operation(HANDLE handle, const std::string& operation) {
-    if (is_valid_handle(handle)) {
-        std::string handle_info = format_handle_info(handle, operation);
-        LOG_INFO(handle_info, ErrorCategory::WINDOWS_API);
-    } else {
-        LOG_WARNING("Invalid handle for operation: " + operation, ErrorCategory::WINDOWS_API);
-    }
-}
-
-void log_handle_creation(HANDLE handle, const std::string& creation_method) {
-    log_handle_operation(handle, "created via " + creation_method);
-}
-
-void log_handle_cleanup(HANDLE handle, const std::string& cleanup_method) {
-    log_handle_operation(handle, "cleaned up via " + cleanup_method);
-}
-
-} // namespace UndownUnlock::Utils 
+} // namespace utils 

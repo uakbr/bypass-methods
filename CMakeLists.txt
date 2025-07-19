@@ -33,6 +33,12 @@ set(DLL_HOOKS_SOURCES
     src/signatures/dx_signatures.cpp
     src/signatures/lockdown_signatures.cpp
     src/com_hooks/factory_hooks.cpp
+    # Utility components
+    src/utils/raii_wrappers.cpp
+    src/utils/error_handler.cpp
+    src/utils/memory_tracker.cpp
+    src/utils/performance_monitor.cpp
+    src/utils/crash_reporter.cpp
 )
 
 # Define source files for the test client
