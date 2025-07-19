@@ -1,29 +1,21 @@
 cmake_minimum_required(VERSION 3.12)
 project(UndownUnlock VERSION 1.0.0 LANGUAGES CXX)
 
-# Include FetchContent module for managing dependencies
-include(FetchContent)
+# Include centralized dependency management
+include(cmake/dependencies.cmake)
 
-# Set C++ standard
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# Configure dependency options and validate environment
+configure_dependency_options()
+validate_build_environment()
+validate_dependencies()
 
 # Define output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# Add include directories
-include_directories(
-    ${CMAKE_SOURCE_DIR}/include
-)
-
-# Find required packages
-find_package(directx-headers CONFIG QUIET)
-if(NOT directx-headers_FOUND)
-    message(STATUS "DirectX headers not found via find_package, using system headers")
-endif()
+# Set up dependency targets
+setup_dependency_targets()
 
 # Define source files for the DLL hooks library
 set(DLL_HOOKS_SOURCES
@@ -61,26 +53,19 @@ add_custom_command(TARGET UndownUnlockDXHook POST_BUILD
 
 # Set up the DLL properties
 target_compile_definitions(UndownUnlockDXHook PRIVATE
-    WIN32
-    _WINDOWS
     _USRDLL
 )
 
 # Add the test client executable
 add_executable(UndownUnlockTestClient ${TEST_CLIENT_SOURCES})
 
-# Link the test client with necessary libraries
+# Link targets with dependencies
 target_link_libraries(UndownUnlockTestClient PRIVATE
-    d3d11
-    dxgi
-    windowscodecs
+    UndownUnlockDependencies
 )
 
-# Link the DLL hooks with necessary libraries
 target_link_libraries(UndownUnlockDXHook PRIVATE
-    d3d11
-    dxgi
-    windowscodecs
+    UndownUnlockDependencies
 )
 
 # Installation rules
@@ -98,20 +83,14 @@ configure_file(
 )
 
 # Add tests if testing is enabled
-option(BUILD_TESTING "Build tests" ON)
 if(BUILD_TESTING)
     enable_testing()
-
-    # Declare Google Test dependency (fetched if not found by find_package in tests/CMakeLists.txt)
-    FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG release-1.11.0
-    )
+    setup_test_dependencies()
     add_subdirectory(tests)
 endif()
 
 # Print configuration summary
+print_dependency_summary()
 message(STATUS "CMAKE_GENERATOR: ${CMAKE_GENERATOR}")
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 message(STATUS "CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")

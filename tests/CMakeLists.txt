@@ -1,22 +1,14 @@
 cmake_minimum_required(VERSION 3.12)
+project(UndownUnlockTests VERSION 1.0.0 LANGUAGES CXX)
 
 # Include directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
 )
 
-# Use Google Test framework
-find_package(GTest QUIET)
-if(NOT GTest_FOUND)
-    message(STATUS "Google Test not found, will download and build it")
-    # Download Google Test
-    include(FetchContent)
-    FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG release-1.11.0
-    )
-    FetchContent_MakeAvailable(googletest)
+# Use Google Test framework (managed by parent CMakeLists.txt)
+if(NOT TARGET gtest)
+    message(FATAL_ERROR "Google Test not available. Please ensure BUILD_TESTING is enabled.")
 endif()
 
 # Define test source files
@@ -29,10 +21,9 @@ set(TEST_SOURCES
 # Create test executable
 add_executable(undownunlock_tests ${TEST_SOURCES})
 
-# Link against Google Test and our library
+# Link against test dependencies and our library
 target_link_libraries(undownunlock_tests PRIVATE
-    GTest::gtest
-    GTest::gtest_main
+    UndownUnlockTestDependencies
     UndownUnlockDXHook
 )
 
