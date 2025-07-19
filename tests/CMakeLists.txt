@@ -20,6 +20,10 @@ set(TEST_SOURCES
     test_error_handler.cpp
     test_dx_hook_core.cpp
     test_shared_memory_transport.cpp
+    test_frame_extractor.cpp
+    test_new_dx_hook_core.cpp
+    test_swap_chain_hook.cpp
+    test_windows_api_hooks.cpp
 )
 
 # Create test executable
