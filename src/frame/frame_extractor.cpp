@@ -1,5 +1,6 @@
 #include "../../include/frame_extractor.h"
 #include "../../include/shared_memory_transport.h"
+#include "../../include/hooks/com_interface_wrapper.h"
 #include <chrono>
 #include <iostream>
 
@@ -9,7 +10,6 @@ namespace DXHook {
 FrameExtractor::FrameExtractor()
     : m_device(nullptr)
     , m_deviceContext(nullptr)
-    , m_stagingTexture(nullptr)
     , m_currentWidth(0)
     , m_currentHeight(0)
     , m_currentFormat(DXGI_FORMAT_UNKNOWN)
@@ -18,11 +18,8 @@ FrameExtractor::FrameExtractor()
 }
 
 FrameExtractor::~FrameExtractor() {
-    // Release the staging texture if it exists
-    if (m_stagingTexture) {
-        m_stagingTexture->Release();
-        m_stagingTexture = nullptr;
-    }
+    // RAII wrapper automatically releases the staging texture when it goes out of scope
+    m_stagingTextureWrapper.Release();
     
     // We don't release the device or context as we don't own them
 }
@@ -43,15 +40,12 @@ bool FrameExtractor::Initialize(ID3D11Device* device, ID3D11DeviceContext* conte
 
 bool FrameExtractor::CreateOrResizeStagingTexture(uint32_t width, uint32_t height, DXGI_FORMAT format) {
     // If we already have a staging texture with the right size and format, reuse it
-    if (m_stagingTexture && m_currentWidth == width && m_currentHeight == height && m_currentFormat == format) {
+    if (m_stagingTextureWrapper && m_currentWidth == width && m_currentHeight == height && m_currentFormat == format) {
         return true;
     }
     
     // Release the old texture if it exists
-    if (m_stagingTexture) {
-        m_stagingTexture->Release();
-        m_stagingTexture = nullptr;
-    }
+    m_stagingTextureWrapper.Release();
     
     // Create a new staging texture
     D3D11_TEXTURE2D_DESC desc = {};
@@ -64,11 +58,15 @@ bool FrameExtractor::CreateOrResizeStagingTexture(uint32_t width, uint32_t heigh
     desc.Usage = D3D11_USAGE_STAGING;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
     
-    HRESULT hr = m_device->CreateTexture2D(&desc, nullptr, &m_stagingTexture);
+    ID3D11Texture2D* stagingTexture = nullptr;
+    HRESULT hr = m_device->CreateTexture2D(&desc, nullptr, &stagingTexture);
     if (FAILED(hr)) {
         std::cerr << "Failed to create staging texture: " << std::hex << hr << std::endl;
         return false;
     }
+    
+    // Wrap the texture with RAII
+    m_stagingTextureWrapper.Reset(stagingTexture, true);
     
     // Store the new dimensions and format
     m_currentWidth = width;
@@ -105,14 +103,14 @@ bool FrameExtractor::ExtractFrame(IDXGISwapChain* pSwapChain) {
         }
         
         // Copy the back buffer to the staging texture
-        m_deviceContext->CopyResource(m_stagingTexture, backBuffer);
+        m_deviceContext->CopyResource(m_stagingTextureWrapper.Get(), backBuffer);
         
         // We're done with the back buffer
         backBuffer->Release();
         
         // Map the staging texture to get access to its data
         D3D11_MAPPED_SUBRESOURCE mappedResource;
-        hr = m_deviceContext->Map(m_stagingTexture, 0, D3D11_MAP_READ, 0, &mappedResource);
+        hr = m_deviceContext->Map(m_stagingTextureWrapper.Get(), 0, D3D11_MAP_READ, 0, &mappedResource);
         
         if (FAILED(hr)) {
             std::cerr << "Failed to map staging texture: " << std::hex << hr << std::endl;
@@ -137,7 +135,7 @@ bool FrameExtractor::ExtractFrame(IDXGISwapChain* pSwapChain) {
         memcpy(frameData.data.data(), src, totalSize);
         
         // Unmap the texture
-        m_deviceContext->Unmap(m_stagingTexture, 0);
+        m_deviceContext->Unmap(m_stagingTextureWrapper.Get(), 0);
         
         // Convert the frame format if needed
         FrameData convertedData;

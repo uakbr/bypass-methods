@@ -1,5 +1,6 @@
 #include "../../include/dx_hook_core.h"
 #include "../../include/signatures/dx_signatures.h"
+#include "../../include/hooks/com_interface_wrapper.h"
 #include <iostream>
 #include <Windows.h>
 
@@ -148,7 +149,11 @@ bool SwapChainHook::FindAndHookSwapChain() {
         swapChainDesc.SampleDesc.Count = 1;
         swapChainDesc.Windowed = TRUE;
         
-        // Create the device and swap chain
+        // Create the device and swap chain using RAII wrappers
+        D3D11DeviceWrapper deviceWrapper;
+        D3D11DeviceContextWrapper contextWrapper;
+        DXGISwapChainWrapper swapChainWrapper;
+        
         ID3D11Device* device = nullptr;
         ID3D11DeviceContext* context = nullptr;
         IDXGISwapChain* swapChain = nullptr;
@@ -169,13 +174,15 @@ bool SwapChainHook::FindAndHookSwapChain() {
         );
         
         if (SUCCEEDED(hr) && swapChain) {
-            // Hook the swap chain
-            result = InstallHooks(swapChain);
+            // Wrap the interfaces for automatic cleanup
+            deviceWrapper.Reset(device, true);
+            contextWrapper.Reset(context, true);
+            swapChainWrapper.Reset(swapChain, true);
             
-            // Clean up
-            swapChain->Release();
-            context->Release();
-            device->Release();
+            // Hook the swap chain
+            result = InstallHooks(swapChainWrapper.Get());
+            
+            // RAII wrappers automatically release interfaces when they go out of scope
         } else {
             std::cerr << "Failed to create D3D11 device and swap chain: " << std::hex << hr << std::endl;
         }

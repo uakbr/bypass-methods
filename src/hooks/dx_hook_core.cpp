@@ -2,6 +2,7 @@
 #include "../../include/frame_extractor.h"
 #include "../../include/shared_memory_transport.h"
 #include "../../include/com_hooks/factory_hooks.h"
+#include "../../include/hooks/com_interface_wrapper.h"
 #include <iostream>
 
 namespace UndownUnlock {
@@ -58,29 +59,33 @@ bool DXHookCore::Initialize() {
         instance.m_swapChainHook->SetPresentCallback([&instance](IDXGISwapChain* pSwapChain) {
             // Hook fired - extract a frame
             try {
-                // Get the device and context from the swap chain
-                ID3D11Device* device = nullptr;
-                HRESULT hr = pSwapChain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&device));
+                // Use RAII wrapper to safely get the device from the swap chain
+                auto deviceWrapper = GetInterfaceChecked<ID3D11Device>(pSwapChain, __uuidof(ID3D11Device), "GetDevice");
                 
-                if (SUCCEEDED(hr) && device) {
-                    // Get the immediate context
+                if (deviceWrapper) {
+                    // Get the immediate context using RAII wrapper
                     ID3D11DeviceContext* context = nullptr;
-                    device->GetImmediateContext(&context);
+                    HRESULT hr = deviceWrapper->GetImmediateContext(&context);
                     
-                    // Initialize the frame extractor if not already
-                    static bool extractorInitialized = false;
-                    if (!extractorInitialized) {
-                        instance.m_frameExtractor->Initialize(device, context);
-                        instance.m_frameExtractor->SetSharedMemoryTransport(instance.m_sharedMemory.get());
-                        extractorInitialized = true;
+                    if (SUCCEEDED(hr) && context) {
+                        // Wrap the context for automatic cleanup
+                        D3D11DeviceContextWrapper contextWrapper(context, true);
+                        
+                        // Initialize the frame extractor if not already
+                        static bool extractorInitialized = false;
+                        if (!extractorInitialized) {
+                            instance.m_frameExtractor->Initialize(deviceWrapper.Get(), contextWrapper.Get());
+                            instance.m_frameExtractor->SetSharedMemoryTransport(instance.m_sharedMemory.get());
+                            extractorInitialized = true;
+                        }
+                        
+                        // Extract the frame
+                        instance.m_frameExtractor->ExtractFrame(pSwapChain);
+                        
+                        // RAII wrappers automatically release interfaces when they go out of scope
+                    } else {
+                        std::cerr << "Failed to get immediate context from device" << std::endl;
                     }
-                    
-                    // Extract the frame
-                    instance.m_frameExtractor->ExtractFrame(pSwapChain);
-                    
-                    // Release the device and context
-                    context->Release();
-                    device->Release();
                 }
             }
             catch (const std::exception& e) {

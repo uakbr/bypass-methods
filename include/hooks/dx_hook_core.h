@@ -2,6 +2,7 @@
 
 #include "dx_common.h"
 #include "swap_chain_hook.h"
+#include "com_interface_wrapper.h"
 
 #include <memory>
 
@@ -29,7 +30,7 @@ private:
     ~DirectXHookManager();
 
     std::unique_ptr<SwapChainHook> swapChainHook_; // Hook for IDXGISwapChain::Present
-    IDXGISwapChain* activeSwapChain_;              // The currently hooked IDXGISwapChain instance
+    DXGISwapChainWrapper activeSwapChain_;         // The currently hooked IDXGISwapChain instance with RAII
 
     bool dependenciesChecked_; // Flag to ensure DLLs are checked once
     bool presentHookInstalled_; // Flag to track if Present hook is active on activeSwapChain_

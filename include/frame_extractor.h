@@ -6,6 +6,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include "hooks/com_interface_wrapper.h"
 
 namespace UndownUnlock {
 namespace DXHook {
@@ -65,7 +66,7 @@ public:
 private:
     ID3D11Device* m_device;                       // D3D11 device
     ID3D11DeviceContext* m_deviceContext;         // D3D11 device context
-    ID3D11Texture2D* m_stagingTexture;            // Staging texture for CPU readback
+    D3D11Texture2DWrapper m_stagingTextureWrapper; // RAII wrapper for staging texture
     uint32_t m_currentWidth;                      // Current frame width
     uint32_t m_currentHeight;                     // Current frame height
     DXGI_FORMAT m_currentFormat;                  // Current frame format

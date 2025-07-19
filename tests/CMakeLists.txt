@@ -23,6 +23,7 @@ endif()
 set(TEST_SOURCES
     test_pattern_scanner.cpp
     test_hooked_functions.cpp
+    test_com_interface_wrapper.cpp
 )
 
 # Create test executable

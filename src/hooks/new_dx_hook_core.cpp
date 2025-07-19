@@ -1,4 +1,5 @@
 #include "../../include/hooks/dx_hook_core.h"
+#include "../../include/hooks/com_interface_wrapper.h"
 #include <iostream>
 #include <windows.h>
 
@@ -10,8 +11,7 @@ DirectXHookManager& DirectXHookManager::GetInstance() {
 }
 
 DirectXHookManager::DirectXHookManager()
-    : activeSwapChain_(nullptr),
-      dependenciesChecked_(false),
+    : dependenciesChecked_(false),
       presentHookInstalled_(false) { // Initialize new members
     std::cout << "[DirectXHookManager] Constructor." << std::endl;
 }
@@ -70,9 +70,9 @@ void DirectXHookManager::Initialize() {
     // So, just log current state.
     if (activeSwapChain_ && swapChainHook_ && swapChainHook_->IsInstalled()){
          presentHookInstalled_ = true;
-         std::cout << "[DirectXHookManager::Initialize] Present hook is active on SwapChain: " << activeSwapChain_ << std::endl;
+         std::cout << "[DirectXHookManager::Initialize] Present hook is active on SwapChain: " << activeSwapChain_.Get() << std::endl;
     } else if (activeSwapChain_ && swapChainHook_ && !swapChainHook_->IsInstalled()){
-        std::cerr << "[DirectXHookManager::Initialize] SwapChain is stored (" << activeSwapChain_ << ") but Present hook failed to install earlier. Check logs from StoreSwapChainPointer." << std::endl;
+        std::cerr << "[DirectXHookManager::Initialize] SwapChain is stored (" << activeSwapChain_.Get() << ") but Present hook failed to install earlier. Check logs from StoreSwapChainPointer." << std::endl;
     }
     else {
         std::cout << "[DirectXHookManager::Initialize] Waiting for D3D11CreateDeviceAndSwapChain detour to provide a SwapChain pointer..." << std::endl;
@@ -87,7 +87,7 @@ void DirectXHookManager::StoreSwapChainPointer(IDXGISwapChain* pSwapChain) {
         return;
     }
 
-    if (activeSwapChain_ == pSwapChain && swapChainHook_ && swapChainHook_->IsInstalled()) {
+    if (activeSwapChain_.Get() == pSwapChain && swapChainHook_ && swapChainHook_->IsInstalled()) {
         std::cout << "[DirectXHookManager::StoreSwapChainPointer] Same SwapChain instance received, Present hook already installed." << std::endl;
         presentHookInstalled_ = true; // Ensure flag is correct
         return;
@@ -95,43 +95,43 @@ void DirectXHookManager::StoreSwapChainPointer(IDXGISwapChain* pSwapChain) {
 
     // If there's an existing (different) swap chain hook, uninstall and release it.
     if (swapChainHook_ && swapChainHook_->IsInstalled()) {
-        std::cout << "[DirectXHookManager::StoreSwapChainPointer] Uninstalling hook from old SwapChain: " << activeSwapChain_ << std::endl;
+        std::cout << "[DirectXHookManager::StoreSwapChainPointer] Uninstalling hook from old SwapChain: " << activeSwapChain_.Get() << std::endl;
         swapChainHook_->Uninstall();
         presentHookInstalled_ = false;
     }
     swapChainHook_.reset(); // Important to reset before releasing activeSwapChain_ if it's the same object
                             // that pSwapChain might point to after a Release/AddRef cycle elsewhere.
 
+    // Clear the previous swap chain (RAII wrapper automatically releases it)
     if (activeSwapChain_) {
-        std::cout << "[DirectXHookManager::StoreSwapChainPointer] Releasing previously stored SwapChain: " << activeSwapChain_ << std::endl;
-        activeSwapChain_->Release(); // Release our reference to the old one
-        activeSwapChain_ = nullptr;
+        std::cout << "[DirectXHookManager::StoreSwapChainPointer] Releasing previously stored SwapChain: " << activeSwapChain_.Get() << std::endl;
+        activeSwapChain_.Release();
     }
 
-    // Store and AddRef the new swap chain
-    activeSwapChain_ = pSwapChain;
-    activeSwapChain_->AddRef();
-    std::cout << "[DirectXHookManager::StoreSwapChainPointer] Stored new SwapChain: " << activeSwapChain_
+    // Store the new swap chain using RAII wrapper
+    activeSwapChain_.Reset(pSwapChain, true);
+    activeSwapChain_->AddRef(); // AddRef since we're taking ownership
+    std::cout << "[DirectXHookManager::StoreSwapChainPointer] Stored new SwapChain: " << activeSwapChain_.Get()
               << ". Ref count should be at least 2 (one from app, one from us)." << std::endl;
 
     // Create and install the hook for the new swap chain's Present method
     try {
-        swapChainHook_ = std::make_unique<SwapChainHook>(activeSwapChain_);
+        swapChainHook_ = std::make_unique<SwapChainHook>(activeSwapChain_.Get());
         if (swapChainHook_->Install()) {
             std::cout << "[DirectXHookManager::StoreSwapChainPointer] SwapChainHook for Present() installed successfully on new SwapChain." << std::endl;
             presentHookInstalled_ = true;
         } else {
             std::cerr << "[DirectXHookManager::StoreSwapChainPointer] Failed to install SwapChainHook on new SwapChain." << std::endl;
-            activeSwapChain_->Release(); // Release our ref if hook install failed
-            activeSwapChain_ = nullptr;
+            // Release the swap chain using RAII wrapper
+            activeSwapChain_.Release();
             swapChainHook_.reset();
             presentHookInstalled_ = false;
         }
     } catch (const std::exception& e) {
         std::cerr << "[DirectXHookManager::StoreSwapChainPointer] Exception during SwapChainHook creation/installation: " << e.what() << std::endl;
         if (activeSwapChain_){ // activeSwapChain_ would have been set before the try block
-             activeSwapChain_->Release();
-             activeSwapChain_ = nullptr;
+             // Release the swap chain using RAII wrapper
+             activeSwapChain_.Release();
         }
         swapChainHook_.reset();
         presentHookInstalled_ = false;
@@ -154,9 +154,9 @@ void DirectXHookManager::Shutdown() {
     }
 
     if (activeSwapChain_) {
-        std::cout << "[DirectXHookManager::Shutdown] Releasing stored SwapChain: " << activeSwapChain_ << std::endl;
-        activeSwapChain_->Release(); // Release our reference
-        activeSwapChain_ = nullptr;
+        std::cout << "[DirectXHookManager::Shutdown] Releasing stored SwapChain: " << activeSwapChain_.Get() << std::endl;
+        // Release the swap chain using RAII wrapper
+        activeSwapChain_.Release();
     }
 
     dependenciesChecked_ = false;

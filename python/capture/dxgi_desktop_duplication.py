@@ -452,26 +452,41 @@ class DXGIOutputDuplication:
                 self.dxgi_output_duplication.ReleaseFrame()
                 self.acquired_frame = None
             
-            # Release all objects
-            if self.staging_texture:
-                self.staging_texture.Release()
-                self.staging_texture = None
+            # Release all objects using context managers for safety
+            try:
+                if self.staging_texture:
+                    self.staging_texture.Release()
+                    self.staging_texture = None
+            except Exception as e:
+                logger.warning(f"Error releasing staging texture: {e}")
                 
-            if self.dxgi_output_duplication:
-                self.dxgi_output_duplication.Release()
-                self.dxgi_output_duplication = None
+            try:
+                if self.dxgi_output_duplication:
+                    self.dxgi_output_duplication.Release()
+                    self.dxgi_output_duplication = None
+            except Exception as e:
+                logger.warning(f"Error releasing output duplication: {e}")
                 
-            if self.dxgi_output:
-                self.dxgi_output.Release()
-                self.dxgi_output = None
+            try:
+                if self.dxgi_output:
+                    self.dxgi_output.Release()
+                    self.dxgi_output = None
+            except Exception as e:
+                logger.warning(f"Error releasing output: {e}")
                 
-            if self.device_context:
-                self.device_context.Release()
-                self.device_context = None
+            try:
+                if self.device_context:
+                    self.device_context.Release()
+                    self.device_context = None
+            except Exception as e:
+                logger.warning(f"Error releasing device context: {e}")
                 
-            if self.device:
-                self.device.Release()
-                self.device = None
+            try:
+                if self.device:
+                    self.device.Release()
+                    self.device = None
+            except Exception as e:
+                logger.warning(f"Error releasing device: {e}")
                 
             self.initialized = False
             logger.info("DXGI resources cleaned up")

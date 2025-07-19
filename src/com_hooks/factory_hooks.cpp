@@ -1,5 +1,6 @@
 #include "../../include/com_hooks/factory_hooks.h"
 #include "../../include/dx_hook_core.h"
+#include "../../include/hooks/com_interface_wrapper.h"
 #include <iostream>
 
 namespace UndownUnlock {
