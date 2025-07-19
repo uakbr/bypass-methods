@@ -53,7 +53,19 @@ A production-ready, enterprise-grade DirectX and Windows API hooking framework d
 
 ## 🛠️ Installation
 
-### Quick Start
+### Windows Users (Recommended)
+
+**One-Click Installation:**
+1. Download and extract the framework
+2. Double-click `scripts\install_windows.bat`
+3. Follow the prompts and wait for installation
+4. Launch the framework when prompted
+
+**That's it!** The installer handles everything automatically.
+
+For detailed Windows installation instructions, see [Windows Installation Guide](docs/WINDOWS_INSTALLATION.md).
+
+### Cross-Platform Installation
 
 1. **Clone the repository**
    ```bash
@@ -67,7 +79,7 @@ A production-ready, enterprise-grade DirectX and Windows API hooking framework d
    pip install -r python/requirements/requirements_security.txt
    ```
 
-3. **Build the C++ components**
+3. **Build the C++ components** (Windows only)
    ```bash
    mkdir build && cd build
    cmake ..
@@ -79,9 +91,14 @@ A production-ready, enterprise-grade DirectX and Windows API hooking framework d
    python python/tools/gui_controller.py
    ```
 
-### Detailed Installation
+### Installation Methods
 
-For detailed installation instructions, configuration options, and troubleshooting, see the [User Guide](docs/USER_GUIDE.md).
+- **Windows**: Use `scripts\install_windows.bat` for one-click installation
+- **PowerShell**: Use `scripts\build_windows.ps1` for advanced options
+- **Manual**: Follow the detailed installation guide
+- **Cross-Platform**: Python components work on macOS/Linux
+
+For detailed installation instructions, configuration options, and troubleshooting, see the [User Guide](docs/USER_GUIDE.md) and [Windows Installation Guide](docs/WINDOWS_INSTALLATION.md).
 
 ## 🎯 Quick Usage
 
