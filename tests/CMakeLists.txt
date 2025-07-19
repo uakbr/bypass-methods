@@ -18,12 +18,18 @@ set(TEST_SOURCES
     test_com_interface_wrapper.cpp
     test_raii_wrappers.cpp
     test_error_handler.cpp
+    test_memory_tracker.cpp
+    test_performance_monitor.cpp
     test_dx_hook_core.cpp
     test_shared_memory_transport.cpp
     test_frame_extractor.cpp
     test_new_dx_hook_core.cpp
     test_swap_chain_hook.cpp
     test_windows_api_hooks.cpp
+    # Priority 2 test files
+    test_keyboard_hook.cpp
+    test_dx_signatures.cpp
+    test_lockdown_signatures.cpp
 )
 
 # Create test executable
