@@ -1,3 +1,0 @@
-/Users/ub/Desktop/bypass-methods/build/_deps/googletest-subbuild/CMakeFiles/googletest-populate.dir
-/Users/ub/Desktop/bypass-methods/build/_deps/googletest-subbuild/CMakeFiles/edit_cache.dir
-/Users/ub/Desktop/bypass-methods/build/_deps/googletest-subbuild/CMakeFiles/rebuild_cache.dir
