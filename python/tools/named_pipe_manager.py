@@ -504,4 +504,34 @@ class SecurityManager:
         data_bytes = unpadder.update(padded_data) + unpadder.finalize()
         
         # Convert back to string
-        return data_bytes.decode('utf-8') 
+        return data_bytes.decode('utf-8')
+
+    def encrypt_message(self, message: Dict[str, Any]) -> str:
+        """Serialize, encrypt and sign a message dictionary."""
+        message_json = json.dumps(message)
+        return self.encrypt_and_sign(message_json)
+
+    def decrypt_message(self, encrypted_message: str) -> Dict[str, Any]:
+        """Decrypt, verify and deserialize a message dictionary."""
+        decrypted_json = self.decrypt_and_verify(encrypted_message)
+        return json.loads(decrypted_json)
+
+    def sign_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Return the message with an attached HMAC signature."""
+        message_json = json.dumps(message, sort_keys=True)
+        h = hmac.HMAC(self.hmac_key, hashes.SHA256(), backend=self.backend)
+        h.update(message_json.encode("utf-8"))
+        signature = base64.b64encode(h.finalize()).decode("utf-8")
+        return {"message": message, "signature": signature}
+
+    def verify_message(self, signed_message: Dict[str, Any]) -> bool:
+        """Verify the HMAC signature of a signed message."""
+        try:
+            message_json = json.dumps(signed_message.get("message"), sort_keys=True)
+            signature = base64.b64decode(signed_message.get("signature", ""))
+            h = hmac.HMAC(self.hmac_key, hashes.SHA256(), backend=self.backend)
+            h.update(message_json.encode("utf-8"))
+            h.verify(signature)
+            return True
+        except Exception:
+            return False
